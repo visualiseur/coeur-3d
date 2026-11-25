@@ -7,6 +7,8 @@ import { geometrie } from './courbe.js';
 import * as depot from './photos.js';
 import { GROUPES, POUR_LE_GOUT, SOURCES, CHAMPS_DE_LA_FICHE, RELU_LE } from './alimentation.js';
 import { FAMILLES_SEL, VERSION_CIQUAL } from './sel-aliments.js';
+import { emballer, deballer, CHAMPS_SOIGNANT, PREFIXE } from './transmission.js';
+import { qrCode, qrEnSvg } from './qr.js';
 import { versIso, dateLongue, dateCourte, dateTresCourte } from './dates.js';
 
 const CLE = 'carnet-coeur';
@@ -18,9 +20,9 @@ const VUES = [
   { id: 'medicaments', libelle: 'Médicaments', icone: 'medicaments' },
 ];
 // « Ma fiche » n'est plus dans la barre du bas : on y va depuis l'accueil.
-const ROUTES = [...VUES.map((v) => v.id), 'fiche'];
+const ROUTES = [...VUES.map((v) => v.id), 'fiche', 'soignant'];
 // À changer avec VERSION dans sw.js à chaque mise en ligne : c'est ce qui dit quelle version on a sous les yeux.
-const VERSION_APPLI = 10;
+const VERSION_APPLI = 11;
 
 // ---------- État ----------
 
@@ -36,7 +38,7 @@ function charger() {
 
 let etat = charger();
 let photos = new Map(); // identifiant du médicament → image, chargées au démarrage
-const ui = { vue: vueDepuisAdresse(), feuille: null, periode: 30, erreur: '', recherche: '', famillesOuvertes: new Set() };
+const ui = { vue: vueDepuisAdresse(), feuille: null, periode: 30, erreur: '', recherche: '', famillesOuvertes: new Set(), soignant: null, transmission: null, erreurSoignant: '' };
 
 function vueDepuisAdresse() {
   const id = location.hash.slice(1);
@@ -141,6 +143,12 @@ function vueAujourdhui() {
       <span class="chevron">${ic('chevron', 18)}</span>
     </button>`;
 
+  const lienSoignant = `<button class="carte lien-carte" data-action="nav:soignant">
+      <span class="pastille vert">${ic('plus')}</span>
+      <span class="corps"><b>Espace soignant</b><br><span class="discret">Remplir les consignes d’un patient et les lui transmettre</span></span>
+      <span class="chevron">${ic('chevron', 18)}</span>
+    </button>`;
+
   if (carnetVide()) {
     return `${bandeau}${tuilesAccueil()}
       <section class="carte">
@@ -151,6 +159,7 @@ function vueAujourdhui() {
           <button class="bouton secondaire" data-action="exemple">Voir un exemple</button>
         </div>
       </section>
+      ${lienSoignant}
       ${mention()}`;
   }
 
@@ -208,7 +217,7 @@ function vueAujourdhui() {
         </span><span class="chevron">${ic('chevron', 18)}</span></button></li>`).join('')}</ul>
     </section>` : '';
 
-  return `${bandeau}${bandeauExemple()}${tuilesAccueil()}${cartePoids}${carteMeds}${carteRdv}${carteRevoir}${lienFiche}${mention()}`;
+  return `${bandeau}${bandeauReception()}${bandeauExemple()}${tuilesAccueil()}${cartePoids}${carteMeds}${carteRdv}${carteRevoir}${lienFiche}${lienSoignant}${mention()}`;
 }
 
 /** Les trois priorités, toujours en haut de l'accueil : poids, alimentation, liquides. */
@@ -242,6 +251,93 @@ function formulaireLimite(id, { unite, exemple, question }) {
 /** Ouvre le clavier complet, celui qui a un micro : la dictée est celle du téléphone, pas de l'application. */
 function boutonDicter() {
   return `<button class="bouton-rond dicter" type="button" data-action="dicter" aria-label="Dicter le poids avec le micro du clavier" title="Dicter avec le micro du clavier">${ic('micro')}</button>`;
+}
+
+// ---------- Consignes transmises par un soignant, sans serveur ----------
+
+/** Si l'adresse d'ouverture contient des consignes, on les présente au patient, puis on les retire de l'adresse. */
+function traiterReception() {
+  if (!location.hash.startsWith(`#${PREFIXE}`)) return;
+  try { ui.feuille = { type: 'reception', colis: deballer(location.hash) }; } catch (e) { ui.feuille = { type: 'reception', erreur: e.message }; }
+  history.replaceState(null, '', '#aujourdhui');
+  ui.vue = 'aujourdhui';
+}
+
+function feuilleReception({ colis, erreur }) {
+  const tete = (titre) => `<div class="feuille-tete"><h2>${titre}</h2><button class="bouton-rond" data-action="fermer" aria-label="Fermer">${ic('croix', 18)}</button></div>`;
+  if (erreur) return `${tete('Consignes illisibles')}<div class="bloc"><p class="erreur">${ech(erreur)}</p><p class="discret">Rien n’a été changé dans votre carnet. Demandez à votre soignant de refaire le code.</p><button class="bouton large" data-action="fermer">Fermer</button></div>`;
+  return `${tete('Consignes de votre soignant')}
+    <div class="bloc">
+      <section class="carte">
+        <p class="discret">Écrites par</p>
+        <p class="valeur" style="font-weight:700;font-size:1.1rem">${ech(colis.auteur)}</p>
+        <p class="discret">le ${dateCourte(colis.date)}${colis.reevaluerLe ? ` · à réévaluer le ${dateCourte(colis.reevaluerLe)}` : ''}</p>
+      </section>
+      <section class="carte"><ul class="liste">${colis.consignes.map(({ id, valeur }) => `<li class="ligne"><span class="corps"><span class="libelle">${ech(CHAMPS.get(id).libelle)}</span><br><span class="valeur">${avecUnite(CHAMPS.get(id), valeur)}</span></span></li>`).join('')}</ul></section>
+      <p class="discret">Le carnet ne peut pas vérifier qui a écrit ces consignes : ajoutez-les seulement si elles viennent bien de votre soignant. Vos consignes précédentes restent dans l’historique.</p>
+      <button class="bouton large" data-action="accepter-reception">Ajouter à mon carnet</button>
+      <button class="bouton neutre large" data-action="fermer">Ne pas ajouter</button>
+    </div>`;
+}
+
+function bandeauReception() {
+  const r = etat.reception;
+  if (!r || r.vu) return '';
+  const quoi = r.ids.map((id) => CHAMPS.get(id)?.libelle).filter(Boolean).join(', ');
+  return `<div class="bandeau reception">${ic('coche', 20)}<div class="corps"><b>Consignes mises à jour</b> le ${r.date ? dateCourte(r.date) : ''} par ${ech(r.auteur)}.<br><span class="discret">${ech(quoi)}</span><br><button data-action="vu-reception">J’ai vu</button></div></div>`;
+}
+
+function vueSoignant() {
+  const s = ui.soignant ?? {};
+  const champ = (id) => {
+    const c = CHAMPS.get(id);
+    const v = ech(s[`c-${id}`] ?? '');
+    const saisie = c.long
+      ? `<textarea name="c-${id}" rows="2">${v}</textarea>`
+      : `<span class="${c.unite ? 'champ-unite' : ''}"><input type="text" name="c-${id}" value="${v}" ${c.unite ? 'inputmode="decimal"' : ''} autocomplete="off">${c.unite ? `<span>${c.unite}</span>` : ''}</span>`;
+    return `<label class="champ">${ech(c.libelle)}${saisie}</label>`;
+  };
+
+  let resultat = '';
+  if (ui.transmission) {
+    let code;
+    try { code = qrEnSvg(qrCode(new TextEncoder().encode(ui.transmission.lien))); } catch (e) { code = `<p class="erreur">${ech(e.message)} Utilisez le lien ci-dessous.</p>`; }
+    resultat = `<section class="carte transmission">
+      <div class="carte-tete"><span class="pastille vert">${ic('coche')}</span><h2>À transmettre au patient</h2></div>
+      <p class="discret">Le patient scanne ce code avec l’appareil photo de son téléphone : son carnet s’ouvre et lui propose d’ajouter ces consignes.</p>
+      <div class="cadre-qr">${code}</div>
+      <p class="discret">Ou envoyez-lui ce lien :</p>
+      <textarea class="lien-a-copier" readonly rows="3" aria-label="Lien à transmettre">${ech(ui.transmission.lien)}</textarea>
+      <div class="rangee">
+        <button class="bouton secondaire" data-action="copier-lien">Copier le lien</button>
+        ${navigator.share ? '<button class="bouton secondaire" data-action="partager-lien">Partager</button>' : ''}
+      </div>
+      <button class="bouton large" style="margin-top:10px" data-action="recevoir-ici">Ajouter à ce carnet-ci</button>
+      <p class="discret" style="margin-top:6px">« Ajouter à ce carnet-ci » sert quand vous remplissez directement sur le téléphone du patient.</p>
+      <button class="bouton neutre large" style="margin-top:10px" data-action="effacer-soignant">Effacer et recommencer</button>
+    </section>`;
+  }
+
+  return `<h1 class="titre-page">Espace soignant</h1>
+    <p class="sous-titre">Remplissez les consignes du patient. Rien n’est enregistré ni envoyé : elles passent de cet écran à son téléphone, par un code à scanner.</p>
+    ${resultat}
+    <form data-form="soignant" class="formulaire-soignant">
+      <section class="carte">
+        <div class="carte-tete"><span class="pastille primaire">${ic('fiche')}</span><h2>Qui écrit</h2></div>
+        <div class="bloc">
+          <label class="champ">Nom et fonction<input type="text" name="auteur" value="${ech(s.auteur ?? '')}" placeholder="Dr Martin, cardiologue" autocomplete="off" required></label>
+          <div class="deux">
+            <label class="champ">Écrit le<input type="date" name="date" value="${ech(s.date ?? aujourdhui())}" max="${aujourdhui()}" required></label>
+            <label class="champ">À réévaluer le<input type="date" name="reevaluerLe" value="${ech(s.reevaluerLe ?? '')}"></label>
+          </div>
+        </div>
+      </section>
+      ${CHAMPS_SOIGNANT.map((g) => `<section class="carte"><div class="carte-tete"><h2>${ech(g.titre)}</h2></div><div class="bloc">${g.ids.map(champ).join('')}</div></section>`).join('')}
+      ${ui.erreurSoignant ? `<p class="erreur">${ech(ui.erreurSoignant)}</p>` : ''}
+      <button class="bouton large" type="submit">Préparer le code à scanner</button>
+      <p class="discret" style="text-align:center">Seuls les champs remplis sont transmis.</p>
+    </form>
+    ${mention()}`;
 }
 
 // ---------- La bouteille du jour ----------
@@ -788,6 +884,7 @@ function feuille() {
     : type === 'rdv' ? feuilleRdv()
     : type === 'photo' ? feuillePhoto(arg)
     : type === 'aliment' ? feuilleAliment(arg)
+    : type === 'reception' ? feuilleReception(ui.feuille)
     : type === 'urgence' ? feuilleUrgence()
     : feuilleReglages();
   return `<div class="voile" data-voile><div class="feuille" role="dialog" aria-modal="true">${contenu}</div></div>`;
@@ -796,7 +893,7 @@ function feuille() {
 // ---------- Assemblage ----------
 
 function rendre() {
-  const contenu = ui.vue === 'fiche' ? vueFiche() : ui.vue === 'poids' ? vuePoids() : ui.vue === 'medicaments' ? vueMedicaments() : ui.vue === 'alimentation' ? vueAlimentation() : ui.vue === 'liquides' ? vueLiquides() : vueAujourdhui();
+  const contenu = ui.vue === 'fiche' ? vueFiche() : ui.vue === 'poids' ? vuePoids() : ui.vue === 'medicaments' ? vueMedicaments() : ui.vue === 'alimentation' ? vueAlimentation() : ui.vue === 'liquides' ? vueLiquides() : ui.vue === 'soignant' ? vueSoignant() : vueAujourdhui();
   document.getElementById('app').innerHTML = `
     <header class="barre">
       ${ui.vue === 'aujourdhui'
@@ -867,6 +964,14 @@ document.addEventListener('click', (evenement) => {
   else if (action === 'retour') revenir();
   else if (action === 'ouvrir') { ui.feuille = { type: a, arg: b }; ui.erreur = ''; rendre(); }
   else if (action === 'fermer') { ui.feuille = null; ui.erreur = ''; rendre(); }
+  else if (action === 'accepter-reception') { const colis = ui.feuille?.colis; if (colis) tenter(() => store.recevoirConsignes(etat, colis, maintenant())); }
+  else if (action === 'vu-reception') tenter(() => store.marquerReceptionVue(etat), { fermer: false });
+  else if (action === 'recevoir-ici') { ui.feuille = { type: 'reception', colis: ui.transmission.colis }; rendre(); }
+  else if (action === 'effacer-soignant') { ui.soignant = null; ui.transmission = null; ui.erreurSoignant = ''; rendre(); window.scrollTo(0, 0); }
+  else if (action === 'copier-lien') {
+    navigator.clipboard.writeText(ui.transmission.lien).then(() => { cible.textContent = 'Lien copié'; }).catch(() => { document.querySelector('.lien-a-copier')?.select(); });
+  }
+  else if (action === 'partager-lien') navigator.share({ title: 'Consignes pour votre carnet', url: ui.transmission.lien }).catch(() => {});
   else if (action === 'boire') { ui.erreurBoisson = ''; tenter(() => store.boire(etat, jour, a, maintenant()), { fermer: false }); }
   else if (action === 'vider-boissons') { if (confirm('Remettre la bouteille à plein ? Les boissons notées aujourd’hui seront effacées.')) tenter(() => store.viderBoissons(etat, jour), { fermer: false }); }
   else if (action === 'retirer-boisson') tenter(() => store.retirerBoisson(etat, jour, a), { fermer: false });
@@ -902,7 +1007,21 @@ document.addEventListener('submit', (evenement) => {
   const type = formulaire.dataset.form;
   const id = formulaire.dataset.id;
 
-  if (type === 'limite') {
+  if (type === 'soignant') {
+    ui.soignant = s; // gardé en mémoire le temps de l'écran seulement, pour ne pas tout retaper après une erreur
+    try {
+      const consignes = Object.fromEntries(Object.entries(s).filter(([nom]) => nom.startsWith('c-')).map(([nom, v]) => [nom.slice(2), v]));
+      const fragment = emballer({ auteur: s.auteur, date: s.date, reevaluerLe: s.reevaluerLe, consignes });
+      ui.transmission = { lien: `${location.origin}${location.pathname}#${fragment}`, colis: deballer(fragment) };
+      ui.erreurSoignant = '';
+    } catch (e) {
+      ui.transmission = null;
+      ui.erreurSoignant = e.message;
+    }
+    rendre();
+    window.scrollTo(0, 0);
+  }
+  else if (type === 'limite') {
     // La limite saisie sur place doit être un nombre lisible, sinon rien n'est enregistré.
     try {
       const essai = store.ecrireConsigne(etat, id, { valeur: s.valeur }, maintenant());
@@ -1001,7 +1120,7 @@ document.addEventListener('keydown', (evenement) => {
   if (evenement.key === 'Escape' && ui.feuille) { ui.feuille = null; ui.erreur = ''; rendre(); }
 });
 
-window.addEventListener('hashchange', () => { ui.retourPossible = false; ui.vue = vueDepuisAdresse(); ui.feuille = null; rendre(); window.scrollTo(0, 0); });
+window.addEventListener('hashchange', () => { ui.retourPossible = false; ui.vue = vueDepuisAdresse(); ui.feuille = null; traiterReception(); rendre(); window.scrollTo(0, 0); });
 
 // Hors ligne : seulement une fois en ligne, jamais pendant le développement sur l'ordinateur.
 if ('serviceWorker' in navigator && !['localhost', '127.0.0.1'].includes(location.hostname)) {
@@ -1017,5 +1136,6 @@ if ('serviceWorker' in navigator && !['localhost', '127.0.0.1'].includes(locatio
   navigator.serviceWorker.register('./sw.js').then((r) => r.update()).catch((e) => console.error('Mode hors ligne indisponible', e));
 }
 
+traiterReception();
 rendre();
 depot.toutes().then((lues) => { photos = lues; if (lues.size) rendre(); }).catch((e) => console.error('Photos illisibles sur cet appareil', e));

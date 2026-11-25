@@ -12,7 +12,7 @@ export const SCHEMA = 1;
 export const FORMAT = 'carnet-coeur';
 
 export function etatVide() {
-  return { schema: SCHEMA, exemple: false, consignes: {}, medicaments: [], prises: {}, poids: [], rendezVous: [], suivi: {}, boissons: {} };
+  return { schema: SCHEMA, exemple: false, consignes: {}, medicaments: [], prises: {}, poids: [], rendezVous: [], suivi: {}, boissons: {}, reception: null };
 }
 
 const texte = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -229,6 +229,23 @@ export function viderBoissons(etat, date) {
 export const boissonsDuJour = (etat, date) => etat.boissons[date] ?? [];
 export const totalBuMl = (etat, date) => boissonsDuJour(etat, date).reduce((somme, b) => somme + b.ml, 0);
 
+// ---------- Consignes reçues d'un soignant ----------
+
+/**
+ * Range dans le carnet des consignes transmises par un soignant (colis vérifié par transmission.js).
+ * Chaque consigne devient une nouvelle version signée et datée ; l'ancienne reste dans l'historique.
+ */
+export function recevoirConsignes(etat, colis, maintenant) {
+  let e = etat;
+  for (const { id, valeur } of colis.consignes) {
+    e = ecrireConsigne(e, id, { valeur, auteur: colis.auteur, date: colis.date, reevaluerLe: colis.reevaluerLe }, maintenant);
+  }
+  return { ...e, reception: { auteur: colis.auteur, date: colis.date, recuLe: maintenant, ids: colis.consignes.map((c) => c.id), vu: false } };
+}
+
+/** Le patient a vu le message « consignes mises à jour ». */
+export const marquerReceptionVue = (etat) => (etat.reception ? { ...etat, reception: { ...etat.reception, vu: true } } : etat);
+
 // ---------- Rendez-vous ----------
 
 export function ajouterRendezVous(etat, saisie, maintenant) {
@@ -292,6 +309,14 @@ export function valider(donnees) {
     if (!estObjet(r) || !texte(r.id) || !estDateIso(r.date)) throw new Error('Un rendez-vous est illisible.');
     return { id: r.id, date: r.date, heure: texte(r.heure), avec: texte(r.avec), lieu: texte(r.lieu) };
   });
+
+  if (estObjet(donnees.reception)) {
+    const r = donnees.reception;
+    etat.reception = {
+      auteur: texte(r.auteur), date: dateOuVide(r.date), recuLe: texte(r.recuLe),
+      ids: Array.isArray(r.ids) ? r.ids.filter((id) => CHAMPS.has(id)) : [], vu: Boolean(r.vu),
+    };
+  }
 
   if (donnees.boissons !== undefined) {
     if (!estObjet(donnees.boissons)) throw new Error('Boissons illisibles.');
