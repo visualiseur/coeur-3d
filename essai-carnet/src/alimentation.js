@@ -13,6 +13,11 @@ export const SOURCES = {
     date: '16 février 2017',
     adresse: 'https://www.hcsp.fr/Explore.cgi/Telecharger?NomFichier=hcspa20170216_reperesalimentairesactua2017.pdf',
   },
+  ciqual: {
+    titre: 'Anses, table de composition nutritionnelle des aliments Ciqual 2025 (teneurs en sel des aliments)',
+    date: 'novembre 2025',
+    adresse: 'https://doi.org/10.57745/RDMHWY',
+  },
   inco: {
     titre: 'Règlement (UE) n° 1169/2011 sur l’information des consommateurs, annexe I : sel = sodium × 2,5',
     date: '25 octobre 2011',
@@ -21,7 +26,7 @@ export const SOURCES = {
 };
 
 /** Les champs de la fiche qui parlent d'alimentation : affichés en premier, tels qu'écrits. */
-export const CHAMPS_DE_LA_FICHE = ['sel', 'boissons_limite', 'boissons', 'alcool', 'interactions_a_eviter', 'suivi_dietetique'];
+export const CHAMPS_DE_LA_FICHE = ['sel_limite', 'sel', 'boissons_limite', 'boissons', 'alcool', 'interactions_a_eviter', 'suivi_dietetique'];
 
 export const GROUPES = [
   {
@@ -56,19 +61,6 @@ export const GROUPES = [
     ],
     note: 'Limiter n’est pas interdire : ces aliments gardent leur place, moins souvent et en plus petite quantité.',
   },
-];
-
-/** Aide-mémoire à cocher. « cases » = le nombre du repère publié, pas un objectif personnel. */
-export const SUIVI_DU_JOUR = [
-  { id: 'fruits_legumes', libelle: 'Fruits et légumes', cases: 5 },
-  { id: 'fruits_coque', libelle: 'Poignée de fruits à coque sans sel', cases: 1 },
-  { id: 'laitiers', libelle: 'Produits laitiers', cases: 2 },
-  { id: 'complets', libelle: 'Pain, pâtes ou riz complets', cases: 1 },
-];
-
-export const SUIVI_DE_LA_SEMAINE = [
-  { id: 'poisson', libelle: 'Poisson, dont un poisson gras', cases: 2 },
-  { id: 'legumes_secs', libelle: 'Légumes secs', cases: 2 },
 ];
 
 /** Idées de cuisine pour saler moins. Ce sont des usages culinaires, pas des conseils médicaux. */

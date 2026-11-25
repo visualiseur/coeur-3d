@@ -350,3 +350,31 @@ input:focus, textarea:focus { outline: none; border-color: var(--primaire); box-
   border: 1.5px solid var(--trait); background: #fff; border-radius: 999px; padding: 5px 8px 5px 12px; font-size: 0.86rem; font-weight: 600;
   display: inline-flex; align-items: center; gap: 6px; color: var(--encre-douce);
 }
+
+/* ---------- Le sel dans les aliments ---------- */
+
+.recherche { margin-top: 14px; }
+.familles { margin-top: 14px; display: grid; gap: 8px; }
+.famille { border: 1.5px solid var(--trait); border-radius: 16px; background: #fff; overflow: hidden; }
+.famille > summary {
+  list-style: none; cursor: pointer; padding: 14px 16px; font-weight: 650; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.famille > summary::-webkit-details-marker { display: none; }
+.famille > summary::after { content: "›"; font-size: 1.4rem; line-height: 1; color: var(--encre-pale); transition: transform 0.15s; }
+.famille[open] > summary::after { transform: rotate(90deg); }
+.famille > summary .compte { margin-left: auto; }
+.famille[open] > summary { background: var(--ambre-clair); }
+.famille .liste { padding: 0 16px; }
+
+.aliment .ligne { align-items: center; }
+.aliment .teneur { text-align: right; flex: none; display: grid; line-height: 1.15; }
+.aliment .teneur b { font-size: 1.05rem; }
+.aliment .teneur small { font-size: 0.74rem; color: var(--encre-pale); }
+
+.tuile { background: #fff; border-radius: 16px; padding: 14px; display: grid; gap: 2px; text-align: center; box-shadow: var(--ombre); }
+.tuile small { color: var(--encre-douce); font-size: 0.82rem; }
+.tuile b { font-size: 1.5rem; letter-spacing: -0.02em; }
+
+.portions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.portions button { border: 1.5px solid var(--trait); background: #fff; border-radius: 999px; padding: 8px 12px; font-weight: 650; font-size: 0.9rem; }
+[hidden] { display: none !important; }

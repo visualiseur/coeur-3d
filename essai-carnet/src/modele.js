@@ -27,7 +27,8 @@ export const THEMES = [
   {
     id: 'alimentation', titre: 'Alimentation et poids', icone: 'alimentation', couleur: 'ambre',
     champs: [
-      { id: 'sel', libelle: 'Sel', aide: 'Préciser s’il s’agit de sel ou de sodium : ce n’est pas la même quantité.' },
+      { id: 'sel_limite', libelle: 'Limite de sel par jour', unite: 'g', aide: 'En grammes de sel (pas de sodium), comme le médecin l’a écrit. Exemple : 6.' },
+      { id: 'sel', libelle: 'Sel : précisions', long: true, aide: 'La phrase du médecin, s’il a ajouté quelque chose.' },
       { id: 'boissons_limite', libelle: 'Limite de boissons par jour', unite: 'L', aide: 'En litres, comme le médecin l’a écrit. Exemple : 1,5. Sert à remplir la bouteille du jour.' },
       { id: 'boissons', libelle: 'Boissons : ce qui compte, précisions', long: true, aide: 'La phrase du médecin : ce qui compte comme boisson (soupe, café, yaourt…), cas particuliers.' },
       { id: 'alcool', libelle: 'Alcool' },

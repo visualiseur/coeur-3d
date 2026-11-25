@@ -5,8 +5,9 @@ import { THEMES, CHAMPS, MOMENTS } from './modele.js';
 import * as store from './store.js';
 import { geometrie } from './courbe.js';
 import * as depot from './photos.js';
-import { GROUPES, SUIVI_DU_JOUR, SUIVI_DE_LA_SEMAINE, POUR_LE_GOUT, SOURCES, CHAMPS_DE_LA_FICHE, RELU_LE } from './alimentation.js';
-import { versIso, dateLongue, dateCourte, dateTresCourte, lundiDe } from './dates.js';
+import { GROUPES, POUR_LE_GOUT, SOURCES, CHAMPS_DE_LA_FICHE, RELU_LE } from './alimentation.js';
+import { FAMILLES_SEL, VERSION_CIQUAL } from './sel-aliments.js';
+import { versIso, dateLongue, dateCourte, dateTresCourte } from './dates.js';
 
 const CLE = 'carnet-coeur';
 const VUES = [
@@ -31,7 +32,7 @@ function charger() {
 
 let etat = charger();
 let photos = new Map(); // identifiant du médicament → image, chargées au démarrage
-const ui = { vue: vueDepuisAdresse(), feuille: null, periode: 30, erreur: '' };
+const ui = { vue: vueDepuisAdresse(), feuille: null, periode: 30, erreur: '', recherche: '', famillesOuvertes: new Set() };
 
 function vueDepuisAdresse() {
   const id = location.hash.slice(1);
@@ -431,23 +432,83 @@ function vueMedicaments() {
     <p class="mention">Les cases cochées sont un aide-mémoire. Le carnet ne rappelle rien et ne remplace pas votre ordonnance.</p>`;
 }
 
-// ---------- Écran : Alimentation ----------
+// ---------- Le sel dans les aliments ----------
 
-function casesACocher(element, periode) {
-  const fait = store.suiviDe(etat, periode, element.id);
-  const cases = Array.from({ length: element.cases }, (_, i) => {
-    const coche = i < fait;
-    // Toucher la dernière case cochée la décoche ; toucher une autre règle le compte sur elle.
-    const cible = coche && i === fait - 1 ? i : i + 1;
-    return `<button class="case-suivi${coche ? ' fait' : ''}" data-action="suivi:${periode}:${element.id}:${cible}" aria-pressed="${coche}" aria-label="${ech(element.libelle)}, case ${i + 1} sur ${element.cases}">${ic('coche', 16)}</button>`;
-  }).join('');
-  return `<li class="ligne-suivi"><span class="corps"><span class="valeur">${ech(element.libelle)}</span><br><span class="meta">${fait} sur ${element.cases}</span></span><span class="cases">${cases}</span></li>`;
+const ALIMENTS = new Map(FAMILLES_SEL.flatMap((f) => f.aliments.map((a) => [String(a.code), a])));
+const sansAccent = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/** « 53 g », « 1,8 g », ou « plus de 1 kg » pour les aliments presque sans sel. */
+function quantitePourUnGramme(sel) {
+  const g = store.grammesPourUnGrammeDeSel(sel);
+  if (g === null || g > 1000) return 'plus de 1 kg';
+  return g < 10 ? `${g.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} g` : `${Math.round(g)} g`;
 }
 
-function vueAlimentation() {
-  const jour = aujourdhui();
-  const semaine = `S${lundiDe(jour)}`;
+const selPour100 = (sel) => (sel < 0.1 ? 'moins de 0,1 g' : `${sel.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} g`);
 
+function carteSel() {
+  const limite = store.limiteSelG(etat);
+  const familles = FAMILLES_SEL.map((f) => `<details class="famille" data-famille="${f.id}" ${ui.famillesOuvertes.has(f.id) ? 'open' : ''}>
+      <summary><span>${ech(f.titre)}</span><span class="compte">${f.aliments.length}</span></summary>
+      <ul class="liste">${f.aliments.map((a) => `<li class="aliment" data-nom="${ech(sansAccent(a.nom))}"><button class="ligne" data-action="ouvrir:aliment:${a.code}">
+        <span class="corps"><span class="valeur">${ech(a.nom)}</span><br><span class="meta">1 g de sel = ${quantitePourUnGramme(a.sel)}</span></span>
+        <span class="teneur"><b>${selPour100(a.sel)}</b><small>pour 100 g</small></span>
+      </button></li>`).join('')}</ul>
+    </details>`).join('');
+
+  return `<section class="carte">
+    <div class="carte-tete"><span class="pastille ambre">${ic('balance')}</span><h2>Le sel dans les aliments</h2></div>
+    <p class="discret">${limite === null
+      ? 'Ce que chaque aliment apporte en sel. Notez dans la fiche la limite écrite par votre médecin pour voir ce qu’une portion en représente.'
+      : `Ce que chaque aliment apporte en sel. Votre limite écrite : <b>${limite.toLocaleString('fr-FR')} g par jour</b>.`} Touchez un aliment pour calculer votre portion.</p>
+    <input type="text" class="recherche" data-recherche placeholder="Chercher un aliment" aria-label="Chercher un aliment" autocomplete="off" value="${ech(ui.recherche)}">
+    <p class="vide" data-aucun hidden style="margin-top:12px">Aucun aliment de la liste ne correspond. Regardez l’étiquette du produit : le calcul est plus bas.</p>
+    <div class="familles">${familles}</div>
+    <p class="discret" style="margin-top:12px">Teneurs moyennes de la table Ciqual de l’Anses. D’une marque à l’autre, un produit peut être plus ou moins salé : son étiquette fait foi.</p>
+  </section>`;
+}
+
+/** Applique la recherche à la liste affichée, sans la redessiner (la saisie garderait mal le curseur). */
+function filtrerAliments() {
+  const q = sansAccent(ui.recherche.trim());
+  let total = 0;
+  for (const famille of document.querySelectorAll('.famille')) {
+    let visibles = 0;
+    for (const li of famille.querySelectorAll('.aliment')) {
+      const montre = !q || li.dataset.nom.includes(q);
+      li.hidden = !montre;
+      if (montre) visibles += 1;
+    }
+    famille.hidden = visibles === 0;
+    if (q) famille.open = visibles > 0; else famille.open = ui.famillesOuvertes.has(famille.dataset.famille);
+    total += visibles;
+  }
+  const aucun = document.querySelector('[data-aucun]');
+  if (aucun) aucun.hidden = total > 0;
+}
+
+function feuilleAliment(code) {
+  const a = ALIMENTS.get(String(code));
+  if (!a) return '';
+  return `<div class="feuille-tete"><h2>${ech(a.nom)}</h2><button class="bouton-rond" data-action="fermer" aria-label="Fermer">${ic('croix', 18)}</button></div>
+    <div class="bloc">
+      <div class="deux">
+        <div class="tuile"><small>Pour 100 g</small><b>${selPour100(a.sel)}</b><small>de sel</small></div>
+        <div class="tuile"><small>1 g de sel, c’est</small><b>${quantitePourUnGramme(a.sel)}</b><small>de cet aliment</small></div>
+      </div>
+      <section class="carte calcul" data-calcul="aliment" data-sel="${a.sel}">
+        <label class="champ">Ma portion<span class="champ-unite"><input type="text" inputmode="decimal" data-entree="portion" placeholder="50" autocomplete="off"><span>g</span></span></label>
+        <div class="portions">${[10, 20, 30, 50, 100, 150, 250].map((g) => `<button type="button" data-action="portion:${g}">${g} g</button>`).join('')}</div>
+        <p class="resultat" data-resultat>= <b>…</b> g de sel<span data-part></span></p>
+      </section>
+      <p class="discret">Dans la table ${ech(VERSION_CIQUAL)} : « ${ech(a.nomCiqual)} ». C’est une teneur moyenne : l’étiquette de votre produit fait foi.</p>
+      ${store.limiteSelG(etat) === null ? '' : '<p class="discret">Le pourcentage compare la portion à la limite de sel écrite sur votre fiche. Il ne dit pas ce que vous avez déjà mangé dans la journée.</p>'}
+    </div>`;
+}
+
+// ---------- Écran : Alimentation ----------
+
+function vueAlimentation() {
   const maFiche = CHAMPS_DE_LA_FICHE.map((id) => {
     const c = CHAMPS.get(id);
     const v = store.consigneCourante(etat, id);
@@ -479,14 +540,7 @@ function vueAlimentation() {
 
     ${carteBoissons()}
 
-    <section class="carte">
-      <div class="carte-tete"><span class="pastille vert">${ic('coche')}</span><h2>Mon aide-mémoire</h2></div>
-      <div class="moment">Aujourd’hui</div>
-      <ul class="liste">${SUIVI_DU_JOUR.map((e) => casesACocher(e, jour)).join('')}</ul>
-      <div class="moment" style="margin-top:18px">Cette semaine</div>
-      <ul class="liste">${SUIVI_DE_LA_SEMAINE.map((e) => casesACocher(e, semaine)).join('')}</ul>
-      <p class="discret" style="margin-top:12px">Le nombre de cases est celui du repère publié. Ces cases sont un aide-mémoire : le carnet ne juge pas.</p>
-    </section>
+    ${carteSel()}
 
     ${groupes}
 
@@ -495,16 +549,16 @@ function vueAlimentation() {
       <p class="discret">Certaines étiquettes indiquent le sodium, pas le sel. Le sel vaut le sodium multiplié par 2,5.</p>
       <div class="calcul" data-calcul="sodium">
         <label class="champ">Sodium sur l’étiquette<span class="champ-unite"><input type="text" inputmode="decimal" data-entree="sodium" placeholder="400" autocomplete="off"><span>mg</span></span></label>
-        <p class="resultat" data-resultat>= <b>…</b> g de sel</p>
+        <p class="resultat" data-resultat>= <b>…</b> g de sel<span data-part></span></p>
       </div>
       <div class="calcul" data-calcul="portion" style="margin-top:16px">
         <div class="deux">
           <label class="champ">Sel pour 100 g<span class="champ-unite"><input type="text" inputmode="decimal" data-entree="sel" placeholder="1,2" autocomplete="off"><span>g</span></span></label>
           <label class="champ">Ma portion<span class="champ-unite"><input type="text" inputmode="decimal" data-entree="portion" placeholder="150" autocomplete="off"><span>g</span></span></label>
         </div>
-        <p class="resultat" data-resultat>= <b>…</b> g de sel dans la portion</p>
+        <p class="resultat" data-resultat>= <b>…</b> g de sel dans la portion<span data-part></span></p>
       </div>
-      <p class="discret" style="margin-top:12px">Ce calcul donne une quantité. La limite à ne pas dépasser, c’est celle écrite sur votre fiche.</p>
+      <p class="discret" style="margin-top:12px">${store.limiteSelG(etat) === null ? 'Ce calcul donne une quantité. Notez dans la fiche la limite de sel écrite par votre médecin : le carnet dira ce que cette quantité en représente.' : 'Le pourcentage compare cette quantité à la limite de sel écrite sur votre fiche. Il ne dit pas ce que vous avez déjà mangé dans la journée.'}</p>
     </section>
 
     <section class="carte">
@@ -524,8 +578,13 @@ function vueAlimentation() {
 /** Met à jour le résultat d'un calcul d'étiquette sans redessiner l'écran (la saisie resterait interrompue). */
 function calculerEtiquette(bloc) {
   const valeur = (nom) => bloc.querySelector(`[data-entree="${nom}"]`)?.value;
-  const g = bloc.dataset.calcul === 'sodium' ? store.selDepuisSodium(valeur('sodium')) : store.selDeLaPortion(valeur('sel'), valeur('portion'));
+  const g = bloc.dataset.calcul === 'sodium' ? store.selDepuisSodium(valeur('sodium'))
+    : bloc.dataset.calcul === 'aliment' ? store.selDeLaPortion(bloc.dataset.sel, valeur('portion'))
+    : store.selDeLaPortion(valeur('sel'), valeur('portion'));
   bloc.querySelector('[data-resultat] b').textContent = g === null ? '…' : g.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+  const limite = store.limiteSelG(etat);
+  const part = store.partDeLaLimite(g, limite);
+  bloc.querySelector('[data-part]').textContent = part === null ? '' : `, soit ${part} % de la limite écrite (${limite.toLocaleString('fr-FR')} g par jour)`;
 }
 
 // ---------- Feuilles de saisie ----------
@@ -645,6 +704,7 @@ function feuille() {
     : type === 'medicament' ? feuilleMedicament(arg)
     : type === 'rdv' ? feuilleRdv()
     : type === 'photo' ? feuillePhoto(arg)
+    : type === 'aliment' ? feuilleAliment(arg)
     : type === 'urgence' ? feuilleUrgence()
     : feuilleReglages();
   return `<div class="voile" data-voile><div class="feuille" role="dialog" aria-modal="true">${contenu}</div></div>`;
@@ -666,6 +726,7 @@ function rendre() {
     <nav class="nav" aria-label="Navigation">${VUES.map((v) => `<button class="${ui.vue === v.id ? 'actif' : ''}" data-action="nav:${v.id}" ${ui.vue === v.id ? 'aria-current="page"' : ''}>${ic(v.icone, 22)}${v.libelle}</button>`).join('')}</nav>
     ${feuille()}`;
   document.body.style.overflow = ui.feuille ? 'hidden' : '';
+  if (ui.vue === 'alimentation') filtrerAliments();
 }
 
 function aller(vue) {
@@ -705,7 +766,7 @@ document.addEventListener('click', (evenement) => {
 
   const cible = evenement.target.closest('[data-action]');
   if (!cible) return;
-  const [action, a, b, c] = cible.dataset.action.split(':');
+  const [action, a, b] = cible.dataset.action.split(':');
   const jour = aujourdhui();
 
   if (action === 'nav') aller(a);
@@ -713,7 +774,11 @@ document.addEventListener('click', (evenement) => {
   else if (action === 'fermer') { ui.feuille = null; ui.erreur = ''; rendre(); }
   else if (action === 'boire') { ui.erreurBoisson = ''; tenter(() => store.boire(etat, jour, a, maintenant()), { fermer: false }); }
   else if (action === 'retirer-boisson') tenter(() => store.retirerBoisson(etat, jour, a), { fermer: false });
-  else if (action === 'suivi') tenter(() => store.reglerSuivi(etat, a, b, c), { fermer: false });
+  else if (action === 'portion') {
+    const bloc = cible.closest('[data-calcul]');
+    bloc.querySelector('[data-entree="portion"]').value = a;
+    calculerEtiquette(bloc);
+  }
   else if (action === 'dicter') {
     const champ = cible.closest('form').querySelector('[name="kg"]');
     champ.inputMode = 'text';
@@ -810,7 +875,15 @@ document.addEventListener('change', async (evenement) => {
   rendre();
 });
 
+// Une famille d'aliments ouverte le reste quand l'écran est redessiné.
+document.addEventListener('toggle', (evenement) => {
+  const famille = evenement.target.closest?.('.famille');
+  if (!famille || ui.recherche.trim()) return;
+  if (famille.open) ui.famillesOuvertes.add(famille.dataset.famille); else ui.famillesOuvertes.delete(famille.dataset.famille);
+}, true);
+
 document.addEventListener('input', (evenement) => {
+  if (evenement.target.matches('[data-recherche]')) { ui.recherche = evenement.target.value; filtrerAliments(); return; }
   const bloc = evenement.target.closest('[data-calcul]');
   if (bloc) calculerEtiquette(bloc);
 });

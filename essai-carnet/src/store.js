@@ -147,6 +147,30 @@ export function reglerSuivi(etat, periode, id, nombre) {
 
 export const suiviDe = (etat, periode, id) => etat.suivi[periode]?.[id] ?? 0;
 
+/**
+ * La limite de sel écrite sur la fiche, en grammes par jour.
+ * null si rien n'est écrit ou si la valeur n'est pas lisible : le carnet ne choisit pas de limite.
+ */
+export function limiteSelG(etat) {
+  const v = consigneCourante(etat, 'sel_limite');
+  if (!v) return null;
+  const propre = v.valeur.toLowerCase().replace(/grammes?|g\b/g, ' ').replace(',', '.').replace(/\s+/g, '');
+  if (!/^\d+(\.\d+)?$/.test(propre)) return null;
+  const g = Number(propre);
+  return g < 0.5 || g > 15 ? null : g;
+}
+
+/** Ce qu'une quantité de sel représente par rapport à la limite écrite, en pourcentage arrondi. */
+export function partDeLaLimite(selG, limiteG) {
+  if (selG === null || limiteG === null || !(limiteG > 0)) return null;
+  return Math.round((selG / limiteG) * 100);
+}
+
+/** Combien de grammes d'un aliment apportent 1 g de sel, d'après sa teneur pour 100 g. null si elle est nulle. */
+export function grammesPourUnGrammeDeSel(selPour100g) {
+  return selPour100g > 0 ? 100 / selPour100g : null;
+}
+
 /** Étiquette : le sodium (en mg) converti en sel (en g). Sel = sodium × 2,5. */
 export function selDepuisSodium(sodiumMg) {
   const mg = Number(String(sodiumMg ?? '').replace(',', '.').replace(/\s+/g, ''));
@@ -317,7 +341,7 @@ export function etatExemple(aujourdhui) {
   consigne('frequence_semaine', '3');
   consigne('activites_autorisees', 'Marche, vélo d’appartement', ajouterJours(aujourdhui, -2));
   consigne('port_charges', '5', ajouterJours(aujourdhui, 40));
-  consigne('sel', 'Exemple : 6 g de sel par jour');
+  consigne('sel_limite', '6');
   consigne('poids_reference', '78');
   consigne('boissons_limite', '1,5');
   consigne('boissons', 'Exemple de phrase écrite par le médecin : « Tout compte : eau, café, soupe, yaourts. »');
