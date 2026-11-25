@@ -20,7 +20,7 @@ const VUES = [
 // « Ma fiche » n'est plus dans la barre du bas : on y va depuis l'accueil.
 const ROUTES = [...VUES.map((v) => v.id), 'fiche'];
 // À changer avec VERSION dans sw.js à chaque mise en ligne : c'est ce qui dit quelle version on a sous les yeux.
-const VERSION_APPLI = 9;
+const VERSION_APPLI = 10;
 
 // ---------- État ----------
 
@@ -324,7 +324,7 @@ function carteBoissons() {
   return `<section class="carte">
     <div class="carte-tete"><span class="pastille bleu">${ic('goutte')}</span><h2>Ma bouteille du jour</h2>${limite !== null ? '<button class="lien" data-action="ouvrir:consigne:boissons_limite">Modifier</button>' : ''}</div>
     ${corps}
-    ${limite === null ? '' : precision ? `<div style="margin-top:14px">${precision}</div>` : '<p class="discret" style="margin-top:12px">Ce qui compte comme boisson (soupe, café, yaourt…) : c’est au médecin de le dire. Vous pouvez noter sa réponse dans la fiche.</p>'}
+    ${limite === null ? '' : precision ? `<div style="margin-top:14px">${precision}</div>` : '<p class="discret" style="margin-top:12px">Ce qui compte comme boisson (soupe, café, yaourt…) : c’est au médecin de le dire. Vous pouvez noter sa réponse juste en dessous.</p>'}
     ${limite === null ? '' : '<p class="discret" style="margin-top:8px">Les tailles de verre sont des tailles courantes : utilisez « Autre quantité » pour les vôtres. La bouteille repart pleine toute seule chaque matin.</p>'}
   </section>`;
 }
@@ -332,7 +332,12 @@ function carteBoissons() {
 function vueLiquides() {
   return `<h1 class="titre-page">Liquides</h1>
     <p class="sous-titre">Ma limite de liquide du jour : la bouteille se vide à chaque boisson notée.</p>
-    ${bandeauExemple()}${carteBoissons()}${mention()}`;
+    ${bandeauExemple()}${carteBoissons()}
+    <section class="carte">
+      <div class="carte-tete"><span class="pastille bleu">${ic('fiche')}</span><h2>Ce que mon médecin a précisé</h2></div>
+      <ul class="liste">${ligneConsigne('boissons')}</ul>
+    </section>
+    ${mention()}`;
 }
 
 function carteLimiteSel() {
@@ -364,10 +369,21 @@ function mention() {
   return '<p class="mention">Ce carnet affiche ce que vous et vos soignants y avez écrit. Il ne remplace aucun avis médical. En cas de doute, appelez : ne décidez pas seul.<br>Version ' + VERSION_APPLI + '</p>';
 }
 
+/** Une consigne de la fiche, affichée telle qu'écrite et modifiable d'un toucher, sur n'importe quel écran. */
+function ligneConsigne(id) {
+  const c = CHAMPS.get(id);
+  const v = store.consigneCourante(etat, id);
+  return `<li><button class="ligne" data-action="ouvrir:consigne:${id}"><span class="corps">
+    <span class="libelle">${ech(c.libelle)}</span><br>
+    ${v ? `<span class="valeur">${avecUnite(c, v.valeur)}</span>${v.auteur || v.date ? `<br><span class="meta">${origine(v)}</span>` : ''}` : '<span class="vide">Non renseigné</span>'}
+  </span><span class="chevron">${ic('chevron', 18)}</span></button></li>`;
+}
+
 // ---------- Écran : Ma fiche ----------
 
 function vueFiche() {
-  const themes = THEMES.map((t) => {
+  // « Alimentation et poids » se règle depuis l'accueil (Poids, Alimentation, Liquides) : pas de doublon ici.
+  const themes = THEMES.filter((t) => t.id !== 'alimentation').map((t) => {
     const renseignes = t.champs.filter((c) => store.consigneCourante(etat, c.id)).length;
     const lignes = t.champs.map((c) => {
       const v = store.consigneCourante(etat, c.id);
@@ -389,6 +405,7 @@ function vueFiche() {
 
   return `<h1 class="titre-page">Ma fiche</h1>
     <p class="sous-titre">Ce que vos soignants ont écrit pour vous. Un champ vide reste vide : rien n’est complété à leur place.</p>
+    <p class="discret" style="padding:0 2px;margin-top:-8px">Le poids, le sel et les liquides se règlent depuis l’accueil.</p>
     ${bandeauExemple()}${themes}${mention()}`;
 }
 
@@ -433,9 +450,8 @@ function vuePoids() {
 
     <section class="carte">
       <div class="carte-tete"><span class="pastille ambre">${ic('fiche')}</span><h2>Ce que le médecin a écrit</h2></div>
-      ${consigne || `<p class="vide">Aucune consigne de surveillance du poids n’est notée sur votre fiche.</p>
-        <p class="discret" style="margin-top:6px">Demandez à votre médecin de l’écrire, puis recopiez sa phrase mot pour mot.</p>
-        <button class="bouton secondaire large" style="margin-top:12px" data-action="ouvrir:consigne:consigne_poids">Recopier la consigne</button>`}
+      <ul class="liste">${ligneConsigne('poids_reference')}${ligneConsigne('consigne_poids')}</ul>
+      <p class="discret" style="margin-top:8px">Recopiez la phrase du médecin mot pour mot. Le carnet l’affiche, il ne l’interprète pas.</p>
     </section>
 
     <section class="carte">
