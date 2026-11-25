@@ -1,0 +1,14 @@
+{
+  "name": "Mon carnet cœur",
+  "short_name": "Carnet cœur",
+  "description": "Ma fiche de sortie, mon poids et mes médicaments, sur mon appareil.",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f0e8",
+  "theme_color": "#0e6b6f",
+  "icons": [
+    { "src": "./icone.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
