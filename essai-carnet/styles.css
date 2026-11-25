@@ -217,13 +217,13 @@ h1, h2, h3, p { margin: 0; }
 
 .nav {
   position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(12px + env(safe-area-inset-bottom));
-  width: min(488px, calc(100% - 24px)); display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 6px;
+  width: min(488px, calc(100% - 24px)); display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; padding: 6px;
   background: rgba(255, 255, 255, 0.94); backdrop-filter: blur(12px); border-radius: 22px;
   box-shadow: 0 10px 30px rgba(28, 39, 51, 0.16), 0 0 0 1px rgba(28, 39, 51, 0.04);
 }
 .nav button {
   border: 0; background: none; border-radius: 16px; padding: 8px 2px 7px; display: grid; justify-items: center; gap: 3px;
-  font-size: 0.72rem; font-weight: 650; color: var(--encre-pale);
+  font-size: 0.64rem; font-weight: 650; color: var(--encre-pale); letter-spacing: -0.01em; min-width: 0;
 }
 .nav button.actif { background: var(--primaire-clair); color: var(--primaire-fonce); }
 
@@ -286,3 +286,67 @@ input:focus, textarea:focus { outline: none; border-color: var(--primaire); box-
 .bloc-photo { display: grid; gap: 10px; margin-top: 6px; }
 .bloc-photo img { width: 100%; max-height: 240px; object-fit: contain; border-radius: 14px; background: #fff; border: 1.5px solid var(--trait); }
 .photo-entiere { width: 100%; border-radius: 16px; display: block; background: #fff; }
+
+/* ---------- Alimentation ---------- */
+
+.bandeau.priorite { background: var(--primaire-clair); color: var(--primaire-fonce); }
+
+.carte.groupe { border-top: 5px solid transparent; }
+.carte.groupe.vert { border-top-color: var(--vert); }
+.carte.groupe.primaire { border-top-color: var(--primaire); }
+.carte.groupe.ambre { border-top-color: var(--ambre); }
+
+.repere { padding: 12px 0; }
+.repere-tete { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; }
+.repere .valeur { font-weight: 650; font-size: 1.02rem; }
+.repere .etiquette { margin-top: 0; }
+.repere .discret { margin-top: 4px; }
+.etiquette.vert { background: var(--vert-clair); color: var(--vert); }
+.etiquette.primaire { background: var(--primaire-clair); color: var(--primaire-fonce); }
+.note-groupe { margin-top: 10px; background: var(--ambre-clair); color: #6b4208; border-radius: var(--rayon-petit); padding: 10px 12px; font-size: 0.92rem; }
+
+.ligne-suivi { display: flex; align-items: center; gap: 12px; padding: 11px 0; }
+.ligne-suivi .corps { flex: 1; min-width: 0; }
+.ligne-suivi .valeur { font-weight: 650; }
+.ligne-suivi .meta { font-size: 0.82rem; color: var(--encre-pale); }
+.ligne-suivi .cases { display: flex; gap: 6px; flex: none; }
+.case-suivi {
+  width: 34px; height: 34px; border-radius: 11px; border: 2px solid #cfc6b8; background: #fff; color: transparent;
+  display: grid; place-items: center; padding: 0;
+}
+.case-suivi.fait { background: var(--vert); border-color: var(--vert); color: #fff; }
+
+.calcul .resultat { margin-top: 10px; background: var(--ambre-clair); border-radius: var(--rayon-petit); padding: 10px 14px; font-size: 1.05rem; }
+.calcul .resultat b { font-size: 1.3rem; }
+
+.puces-gout { display: flex; flex-wrap: wrap; gap: 8px; }
+.puces-gout span { background: var(--vert-clair); color: var(--vert); border-radius: 999px; padding: 7px 13px; font-weight: 600; font-size: 0.92rem; }
+
+.sources a { color: var(--primaire); font-weight: 600; }
+.sources li { padding: 10px 0; }
+
+/* ---------- La bouteille du jour ---------- */
+
+.bloc-bouteille { display: flex; align-items: center; gap: 18px; margin-bottom: 16px; }
+.bouteille { width: 112px; height: auto; flex: none; }
+.bouteille .verre { fill: #eef5fc; }
+.bouteille .contour { fill: none; stroke: #8fb6de; stroke-width: 3; stroke-linejoin: round; }
+.bouteille .bouchon { fill: var(--bleu); }
+.bouteille .vague { fill: #9ccdf3; opacity: 0.9; }
+.bouteille .traits line { stroke: #8fb6de; stroke-width: 2; stroke-linecap: round; }
+.bloc-bouteille .chiffres { flex: 1; min-width: 0; }
+
+.recipients { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.recipient {
+  border: 1.5px solid var(--bleu-clair); background: var(--bleu-clair); color: var(--bleu); border-radius: 14px; padding: 10px 6px;
+  display: grid; gap: 1px; justify-items: center; min-height: 56px; line-height: 1.2;
+}
+.recipient b { font-size: 0.92rem; }
+.recipient span { font-size: 0.82rem; opacity: 0.85; }
+.recipient:active { transform: translateY(1px); }
+
+.journal-boissons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.journal-boissons button {
+  border: 1.5px solid var(--trait); background: #fff; border-radius: 999px; padding: 5px 8px 5px 12px; font-size: 0.86rem; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 6px; color: var(--encre-douce);
+}

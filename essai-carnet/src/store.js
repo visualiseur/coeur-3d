@@ -12,7 +12,7 @@ export const SCHEMA = 1;
 export const FORMAT = 'carnet-coeur';
 
 export function etatVide() {
-  return { schema: SCHEMA, exemple: false, consignes: {}, medicaments: [], prises: {}, poids: [], rendezVous: [] };
+  return { schema: SCHEMA, exemple: false, consignes: {}, medicaments: [], prises: {}, poids: [], rendezVous: [], suivi: {}, boissons: {} };
 }
 
 const texte = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -132,6 +132,70 @@ export function basculerPrise(etat, date, idMedicament, moment, maintenant) {
 
 export const estPris = (etat, date, idMedicament, moment) => Boolean(etat.prises[date]?.[`${idMedicament}|${moment}`]);
 
+// ---------- Alimentation : aide-mémoire à cocher ----------
+
+/**
+ * Note combien de cases sont cochées pour un repère, un jour (« 2026-11-25 ») ou une semaine (« S2026-11-23 », son lundi).
+ * C'est un simple compte tenu par la personne : l'application n'en tire aucun jugement.
+ */
+export function reglerSuivi(etat, periode, id, nombre) {
+  const n = Math.max(0, Math.min(20, Math.round(Number(nombre) || 0)));
+  const dePeriode = { ...(etat.suivi[periode] ?? {}) };
+  if (n) dePeriode[id] = n; else delete dePeriode[id];
+  return { ...etat, suivi: { ...etat.suivi, [periode]: dePeriode } };
+}
+
+export const suiviDe = (etat, periode, id) => etat.suivi[periode]?.[id] ?? 0;
+
+/** Étiquette : le sodium (en mg) converti en sel (en g). Sel = sodium × 2,5. */
+export function selDepuisSodium(sodiumMg) {
+  const mg = Number(String(sodiumMg ?? '').replace(',', '.').replace(/\s+/g, ''));
+  if (!Number.isFinite(mg) || mg < 0 || String(sodiumMg ?? '').trim() === '') return null;
+  return Math.round(mg * 2.5) / 1000;
+}
+
+/** Étiquette : le sel d'une portion, à partir du sel pour 100 g et du poids de la portion. */
+export function selDeLaPortion(selPour100g, portionG) {
+  const lire = (v) => (String(v ?? '').trim() === '' ? NaN : Number(String(v).replace(',', '.').replace(/\s+/g, '')));
+  const sel = lire(selPour100g), portion = lire(portionG);
+  if (!Number.isFinite(sel) || !Number.isFinite(portion) || sel < 0 || portion < 0) return null;
+  return Math.round(sel * portion * 10) / 1000;
+}
+
+// ---------- Boissons : la bouteille du jour ----------
+
+/**
+ * La limite écrite sur la fiche, en millilitres. Le champ est en litres (« 1,5 »).
+ * null si rien n'est écrit ou si la valeur n'est pas un nombre de litres plausible : on ne devine pas.
+ */
+export function limiteBoissonsMl(etat) {
+  const v = consigneCourante(etat, 'boissons_limite');
+  if (!v) return null;
+  const propre = v.valeur.toLowerCase().replace(/litres?|l\b/g, ' ').replace(',', '.').replace(/\s+/g, '');
+  if (!/^\d+(\.\d+)?$/.test(propre)) return null;
+  const litres = Number(propre);
+  if (litres < 0.2 || litres > 6) return null;
+  return Math.round(litres * 1000);
+}
+
+/** Note une boisson (en mL) pour un jour. */
+export function boire(etat, date, ml, maintenant) {
+  if (!estDateIso(date)) throw new Error('La date est invalide.');
+  const quantite = Math.round(Number(String(ml ?? '').replace(',', '.').replace(/\s+/g, '')));
+  if (!Number.isFinite(quantite) || quantite < 10 || quantite > 2000) throw new Error('Quantité illisible : entre 10 et 2000 mL (exemple : 200).');
+  const duJour = [...(etat.boissons[date] ?? []), { ml: quantite, saisiLe: maintenant }];
+  return { ...etat, boissons: { ...etat.boissons, [date]: duJour } };
+}
+
+/** Retire une boisson notée par erreur (par sa position dans la journée). */
+export function retirerBoisson(etat, date, position) {
+  const duJour = (etat.boissons[date] ?? []).filter((_, i) => i !== Number(position));
+  return { ...etat, boissons: { ...etat.boissons, [date]: duJour } };
+}
+
+export const boissonsDuJour = (etat, date) => etat.boissons[date] ?? [];
+export const totalBuMl = (etat, date) => boissonsDuJour(etat, date).reduce((somme, b) => somme + b.ml, 0);
+
 // ---------- Rendez-vous ----------
 
 export function ajouterRendezVous(etat, saisie, maintenant) {
@@ -159,7 +223,7 @@ const estObjet = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 export function valider(donnees) {
   if (!estObjet(donnees)) throw new Error('Le fichier ne contient pas de carnet.');
   if (donnees.schema !== SCHEMA) throw new Error(`Version de carnet inconnue (${donnees.schema}). Cette application lit la version ${SCHEMA}.`);
-  const etat = etatVide();
+  let etat = etatVide();
   etat.exemple = Boolean(donnees.exemple);
 
   if (!estObjet(donnees.consignes)) throw new Error('Consignes illisibles.');
@@ -195,6 +259,23 @@ export function valider(donnees) {
     if (!estObjet(r) || !texte(r.id) || !estDateIso(r.date)) throw new Error('Un rendez-vous est illisible.');
     return { id: r.id, date: r.date, heure: texte(r.heure), avec: texte(r.avec), lieu: texte(r.lieu) };
   });
+
+  if (donnees.boissons !== undefined) {
+    if (!estObjet(donnees.boissons)) throw new Error('Boissons illisibles.');
+    for (const [date, duJour] of Object.entries(donnees.boissons)) {
+      if (!Array.isArray(duJour)) throw new Error('Une journée de boissons est illisible.');
+      for (const b of duJour) etat = boire(etat, date, b?.ml, texte(b?.saisiLe));
+    }
+  }
+
+  // Absent des carnets enregistrés avant l'ajout du volet Alimentation : vide dans ce cas.
+  if (donnees.suivi !== undefined) {
+    if (!estObjet(donnees.suivi)) throw new Error('Aide-mémoire alimentation illisible.');
+    for (const [periode, comptes] of Object.entries(donnees.suivi)) {
+      if (!estObjet(comptes)) throw new Error('Aide-mémoire alimentation illisible.');
+      for (const [id, n] of Object.entries(comptes)) etat = reglerSuivi(etat, periode, id, n);
+    }
+  }
 
   return etat;
 }
@@ -238,6 +319,8 @@ export function etatExemple(aujourdhui) {
   consigne('port_charges', '5', ajouterJours(aujourdhui, 40));
   consigne('sel', 'Exemple : 6 g de sel par jour');
   consigne('poids_reference', '78');
+  consigne('boissons_limite', '1,5');
+  consigne('boissons', 'Exemple de phrase écrite par le médecin : « Tout compte : eau, café, soupe, yaourts. »');
   consigne('consigne_poids', 'Exemple de phrase écrite par le médecin : « Prévenir le service en cas de prise de 2 kg en 3 jours. »');
   consigne('en_cas_d_oubli', 'Exemple de phrase écrite par le médecin : « Ne pas doubler la prise suivante. En cas de doute, appeler la pharmacie. »');
   e = ecrireConsigne(e, 'numero_service', { valeur: '00 00 00 00 00 (exemple)' }, quand);
@@ -256,6 +339,8 @@ export function etatExemple(aujourdhui) {
   });
 
   e = basculerPrise(e, aujourdhui, e.medicaments[0].id, 'matin', quand);
+  e = boire(e, aujourdhui, 250, quand);
+  e = boire(e, aujourdhui, 200, quand);
   e = ajouterRendezVous(e, { date: ajouterJours(aujourdhui, 12), heure: '10:30', avec: 'Cardiologue (exemple)', lieu: 'Consultation' }, quand);
   return e;
 }

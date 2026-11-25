@@ -1,9 +1,9 @@
 // Mode hors ligne : les fichiers de l'application sont gardés sur l'appareil.
 // Changer VERSION à chaque mise en ligne, sinon les appareils gardent l'ancienne version.
-const VERSION = 'carnet-coeur-2';
+const VERSION = 'carnet-coeur-4';
 const FICHIERS = [
   './', './index.html', './styles.css', './icone.svg', './manifest.webmanifest',
-  './src/app.js', './src/store.js', './src/modele.js', './src/courbe.js', './src/dates.js', './src/photos.js',
+  './src/app.js', './src/store.js', './src/modele.js', './src/courbe.js', './src/dates.js', './src/photos.js', './src/alimentation.js',
 ];
 
 self.addEventListener('install', (e) => {

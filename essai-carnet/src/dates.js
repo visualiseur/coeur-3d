@@ -45,3 +45,9 @@ export function dateCourte(iso) {
 export function dateTresCourte(iso) {
   return enDate(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 }
+
+/** Le lundi de la semaine d'une date (la semaine va du lundi au dimanche). */
+export function lundiDe(iso) {
+  const jour = (numeroJour(iso) + 3) % 7; // le 1er janvier 1970 était un jeudi ; 0 = lundi
+  return ajouterJours(iso, -jour);
+}

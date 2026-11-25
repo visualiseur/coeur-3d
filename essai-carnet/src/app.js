@@ -5,7 +5,8 @@ import { THEMES, CHAMPS, MOMENTS } from './modele.js';
 import * as store from './store.js';
 import { geometrie } from './courbe.js';
 import * as depot from './photos.js';
-import { versIso, dateLongue, dateCourte, dateTresCourte } from './dates.js';
+import { GROUPES, SUIVI_DU_JOUR, SUIVI_DE_LA_SEMAINE, POUR_LE_GOUT, SOURCES, CHAMPS_DE_LA_FICHE, RELU_LE } from './alimentation.js';
+import { versIso, dateLongue, dateCourte, dateTresCourte, lundiDe } from './dates.js';
 
 const CLE = 'carnet-coeur';
 const VUES = [
@@ -13,6 +14,7 @@ const VUES = [
   { id: 'fiche', libelle: 'Ma fiche', icone: 'fiche' },
   { id: 'poids', libelle: 'Poids', icone: 'balance' },
   { id: 'medicaments', libelle: 'Médicaments', icone: 'medicaments' },
+  { id: 'alimentation', libelle: 'Alimentation', icone: 'alimentation' },
 ];
 
 // ---------- État ----------
@@ -70,6 +72,7 @@ const TRACES = {
   croix: '<path d="m6 6 12 12M18 6 6 18"/>',
   micro: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.500 11.500a6.500 6.500 0 0 0 13 0M12 18v3"/>',
   photo: '<rect x="3.500" y="7" width="17" height="12.500" rx="3"/><path d="M8.500 7l1.500-2.500h4L15.500 7"/><circle cx="12" cy="13.200" r="3.200"/>',
+  goutte: '<path d="M12 3.500s6 6.200 6 10.500a6 6 0 0 1-12 0c0-4.300 6-10.500 6-10.500Z"/>',
   alerte: '<path d="M12 4 2.500 20h19L12 4ZM12 10v4.500M12 17.300v.2"/>',
 };
 
@@ -193,12 +196,96 @@ function vueAujourdhui() {
         </span><span class="chevron">${ic('chevron', 18)}</span></button></li>`).join('')}</ul>
     </section>` : '';
 
-  return `${bandeau}${bandeauExemple()}${cartePoids}${carteMeds}${carteRdv}${carteRevoir}${mention()}`;
+  return `${bandeau}${bandeauExemple()}${cartePoids}${carteMeds}${carteBoissons()}${carteRdv}${carteRevoir}${mention()}`;
 }
 
 /** Ouvre le clavier complet, celui qui a un micro : la dictée est celle du téléphone, pas de l'application. */
 function boutonDicter() {
   return `<button class="bouton-rond dicter" type="button" data-action="dicter" aria-label="Dicter le poids avec le micro du clavier" title="Dicter avec le micro du clavier">${ic('micro')}</button>`;
+}
+
+// ---------- La bouteille du jour ----------
+
+const RECIPIENTS = [
+  { libelle: 'Tasse', ml: 150 },
+  { libelle: 'Verre', ml: 200 },
+  { libelle: 'Mug', ml: 250 },
+  { libelle: 'Bol', ml: 350 },
+  { libelle: 'Petite bouteille', ml: 500 },
+];
+
+const enMl = (n) => `${n.toLocaleString('fr-FR')} mL`;
+const enLitres = (ml) => `${(ml / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} L`;
+
+/** La bouteille : pleine de la limite écrite sur la fiche, elle se vide de ce qui a été bu. */
+function svgBouteille(limite, bu) {
+  const reste = Math.max(0, limite - bu);
+  const haut = 62, bas = 246; // le corps de la bouteille, du haut de l'eau au fond
+  const niveau = bas - (reste / limite) * (bas - haut);
+  const forme = 'M48 20V46C48 60 20 66 20 96V228A14 14 0 0 0 34 242H86A14 14 0 0 0 100 228V96C100 66 72 60 72 46V20Z';
+  const traits = [0.25, 0.5, 0.75].map((f) => { const y = bas - f * (bas - haut); return `<line x1="88" x2="99" y1="${y}" y2="${y}"/>`; }).join('');
+  return `<svg class="bouteille" viewBox="0 0 120 250" role="img" aria-label="Bouteille du jour : il reste ${enMl(reste)} sur ${enMl(limite)}">
+    <defs>
+      <clipPath id="dans-bouteille"><path d="${forme}"/></clipPath>
+      <linearGradient id="eau" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6fb3e8"/><stop offset="1" stop-color="#2f62a3"/></linearGradient>
+    </defs>
+    <rect x="43" y="5" width="34" height="15" rx="4" class="bouchon"/>
+    <path d="${forme}" class="verre"/>
+    <g clip-path="url(#dans-bouteille)">
+      <rect x="0" y="${niveau.toFixed(1)}" width="120" height="${(250 - niveau).toFixed(1)}" fill="url(#eau)"/>
+      ${reste > 0 ? `<path d="M0 ${niveau.toFixed(1)} q15 -5 30 0 t30 0 t30 0 t30 0 V${(niveau + 6).toFixed(1)} H0Z" class="vague"/>` : ''}
+    </g>
+    <g class="traits">${traits}</g>
+    <path d="${forme}" class="contour"/>
+  </svg>`;
+}
+
+function carteBoissons() {
+  const jour = aujourdhui();
+  const limite = store.limiteBoissonsMl(etat);
+  const bu = store.totalBuMl(etat, jour);
+  const boissons = store.boissonsDuJour(etat, jour);
+  const ecrit = store.consigneCourante(etat, 'boissons_limite');
+  const precision = parole('boissons');
+
+  const verres = `<div class="recipients">${RECIPIENTS.map((r) => `<button class="recipient" data-action="boire:${r.ml}"><b>${r.libelle}</b><span>${r.ml} mL</span></button>`).join('')}</div>
+    <form class="saisie-rapide" data-form="boisson" style="margin-top:10px">
+      <div class="champ-unite"><input type="text" name="ml" inputmode="numeric" placeholder="Autre quantité" aria-label="Autre quantité en millilitres" autocomplete="off" required><span>mL</span></div>
+      <button class="bouton secondaire" type="submit">Ajouter</button>
+    </form>
+    ${ui.erreurBoisson ? `<p class="erreur" style="margin-top:10px">${ech(ui.erreurBoisson)}</p>` : ''}`;
+
+  const journal = boissons.length ? `<div class="journal-boissons">${boissons.map((b, i) => `<button data-action="retirer-boisson:${i}" aria-label="Retirer ${b.ml} mL"><span>${b.ml} mL</span>${ic('croix', 14)}</button>`).join('')}</div>
+    <p class="discret" style="margin-top:6px">Touchez une boisson pour la retirer si elle a été notée par erreur.</p>` : '';
+
+  let corps;
+  if (limite === null) {
+    corps = `<p class="vide">${ecrit ? `La limite notée sur la fiche (« ${ech(ecrit.valeur)} ») n’est pas lisible en litres.` : 'La limite de boissons par jour n’est pas notée sur votre fiche.'}</p>
+      <p class="discret" style="margin-top:6px">Le carnet ne choisit pas de limite à la place du médecin. Notez celle qu’il a écrite, en litres (exemple : 1,5), et la bouteille apparaîtra.</p>
+      <button class="bouton secondaire large" style="margin-top:12px" data-action="ouvrir:consigne:boissons_limite">Noter la limite écrite par le médecin</button>
+      ${bu ? `<p style="margin-top:14px"><span class="grand-nombre">${bu.toLocaleString('fr-FR')}<small>mL bus aujourd’hui</small></span></p>` : ''}
+      <div style="margin-top:14px">${verres}${journal}</div>`;
+  } else {
+    const reste = limite - bu;
+    corps = `<div class="bloc-bouteille">
+        ${svgBouteille(limite, bu)}
+        <div class="chiffres">
+          <div class="discret">${reste >= 0 ? 'Il reste' : 'Au-delà de la limite écrite'}</div>
+          <div class="grand-nombre">${Math.abs(reste).toLocaleString('fr-FR')}<small>mL</small></div>
+          <div class="discret" style="margin-top:8px">Bu aujourd’hui : <b>${enMl(bu)}</b></div>
+          <div class="discret">Limite écrite : <b>${enLitres(limite)}</b></div>
+          <div class="meta" style="font-size:0.8rem;color:var(--encre-pale);margin-top:4px">${origine(ecrit)}</div>
+        </div>
+      </div>
+      ${verres}${journal}`;
+  }
+
+  return `<section class="carte">
+    <div class="carte-tete"><span class="pastille bleu">${ic('goutte')}</span><h2>Ma bouteille du jour</h2>${limite !== null ? '<button class="lien" data-action="ouvrir:consigne:boissons_limite">Limite</button>' : ''}</div>
+    ${corps}
+    ${precision ? `<div style="margin-top:14px">${precision}</div>` : '<p class="discret" style="margin-top:12px">Ce qui compte comme boisson (soupe, café, yaourt…) : c’est au médecin de le dire. Vous pouvez noter sa réponse dans la fiche.</p>'}
+    <p class="discret" style="margin-top:8px">Les tailles de verre sont des tailles courantes : utilisez « Autre quantité » pour les vôtres. La bouteille repart pleine chaque jour.</p>
+  </section>`;
 }
 
 function bandeauExemple() {
@@ -344,6 +431,103 @@ function vueMedicaments() {
     <p class="mention">Les cases cochées sont un aide-mémoire. Le carnet ne rappelle rien et ne remplace pas votre ordonnance.</p>`;
 }
 
+// ---------- Écran : Alimentation ----------
+
+function casesACocher(element, periode) {
+  const fait = store.suiviDe(etat, periode, element.id);
+  const cases = Array.from({ length: element.cases }, (_, i) => {
+    const coche = i < fait;
+    // Toucher la dernière case cochée la décoche ; toucher une autre règle le compte sur elle.
+    const cible = coche && i === fait - 1 ? i : i + 1;
+    return `<button class="case-suivi${coche ? ' fait' : ''}" data-action="suivi:${periode}:${element.id}:${cible}" aria-pressed="${coche}" aria-label="${ech(element.libelle)}, case ${i + 1} sur ${element.cases}">${ic('coche', 16)}</button>`;
+  }).join('');
+  return `<li class="ligne-suivi"><span class="corps"><span class="valeur">${ech(element.libelle)}</span><br><span class="meta">${fait} sur ${element.cases}</span></span><span class="cases">${cases}</span></li>`;
+}
+
+function vueAlimentation() {
+  const jour = aujourdhui();
+  const semaine = `S${lundiDe(jour)}`;
+
+  const maFiche = CHAMPS_DE_LA_FICHE.map((id) => {
+    const c = CHAMPS.get(id);
+    const v = store.consigneCourante(etat, id);
+    return `<li><button class="ligne" data-action="ouvrir:consigne:${id}"><span class="corps">
+      <span class="libelle">${ech(c.libelle)}</span><br>
+      ${v ? `<span class="valeur">${avecUnite(c, v.valeur)}</span><br><span class="meta">${origine(v)}</span>` : '<span class="vide">Non renseigné</span>'}
+    </span><span class="chevron">${ic('chevron', 18)}</span></button></li>`;
+  }).join('');
+
+  const groupes = GROUPES.map((g) => `<section class="carte groupe ${g.couleur}">
+      <div class="carte-tete"><span class="pastille ${g.couleur}">${ic(g.icone)}</span><h2>${ech(g.titre)}</h2></div>
+      <ul class="liste">${g.reperes.map((r) => `<li class="repere">
+        <div class="repere-tete"><span class="valeur">${ech(r.titre)}</span><span class="etiquette ${g.couleur}">${ech(r.repere)}</span></div>
+        ${r.detail ? `<p class="discret">${ech(r.detail)}</p>` : ''}
+      </li>`).join('')}</ul>
+      ${g.note ? `<p class="note-groupe">${ech(g.note)}</p>` : ''}
+    </section>`).join('');
+
+  return `<h1 class="titre-page">Alimentation</h1>
+    <p class="sous-titre">Ce que dit votre fiche d’abord, puis les repères publiés pour tous les adultes.</p>
+    ${bandeauExemple()}
+
+    <section class="carte">
+      <div class="carte-tete"><span class="pastille primaire">${ic('fiche')}</span><h2>Ce que dit ma fiche</h2></div>
+      <ul class="liste">${maFiche}</ul>
+    </section>
+
+    <div class="bandeau priorite">${ic('alerte', 20)}<div class="corps"><b>Votre fiche passe avant.</b> Les repères ci-dessous valent pour les adultes en général. Si votre médecin ou votre diététicien a écrit autre chose pour vous (sel, boissons, aliments à éviter), c’est sa consigne qui compte.</div></div>
+
+    ${carteBoissons()}
+
+    <section class="carte">
+      <div class="carte-tete"><span class="pastille vert">${ic('coche')}</span><h2>Mon aide-mémoire</h2></div>
+      <div class="moment">Aujourd’hui</div>
+      <ul class="liste">${SUIVI_DU_JOUR.map((e) => casesACocher(e, jour)).join('')}</ul>
+      <div class="moment" style="margin-top:18px">Cette semaine</div>
+      <ul class="liste">${SUIVI_DE_LA_SEMAINE.map((e) => casesACocher(e, semaine)).join('')}</ul>
+      <p class="discret" style="margin-top:12px">Le nombre de cases est celui du repère publié. Ces cases sont un aide-mémoire : le carnet ne juge pas.</p>
+    </section>
+
+    ${groupes}
+
+    <section class="carte">
+      <div class="carte-tete"><span class="pastille ambre">${ic('balance')}</span><h2>Lire le sel sur une étiquette</h2></div>
+      <p class="discret">Certaines étiquettes indiquent le sodium, pas le sel. Le sel vaut le sodium multiplié par 2,5.</p>
+      <div class="calcul" data-calcul="sodium">
+        <label class="champ">Sodium sur l’étiquette<span class="champ-unite"><input type="text" inputmode="decimal" data-entree="sodium" placeholder="400" autocomplete="off"><span>mg</span></span></label>
+        <p class="resultat" data-resultat>= <b>…</b> g de sel</p>
+      </div>
+      <div class="calcul" data-calcul="portion" style="margin-top:16px">
+        <div class="deux">
+          <label class="champ">Sel pour 100 g<span class="champ-unite"><input type="text" inputmode="decimal" data-entree="sel" placeholder="1,2" autocomplete="off"><span>g</span></span></label>
+          <label class="champ">Ma portion<span class="champ-unite"><input type="text" inputmode="decimal" data-entree="portion" placeholder="150" autocomplete="off"><span>g</span></span></label>
+        </div>
+        <p class="resultat" data-resultat>= <b>…</b> g de sel dans la portion</p>
+      </div>
+      <p class="discret" style="margin-top:12px">Ce calcul donne une quantité. La limite à ne pas dépasser, c’est celle écrite sur votre fiche.</p>
+    </section>
+
+    <section class="carte">
+      <div class="carte-tete"><span class="pastille vert">${ic('alimentation')}</span><h2>Donner du goût en salant moins</h2></div>
+      <div class="puces-gout">${POUR_LE_GOUT.map((p) => `<span>${ech(p)}</span>`).join('')}</div>
+      <p class="discret" style="margin-top:12px">Des idées de cuisine, pas des conseils médicaux.</p>
+    </section>
+
+    <section class="carte sources">
+      <div class="carte-tete"><span class="pastille bleu">${ic('fiche')}</span><h2>Sources</h2></div>
+      <ul class="liste">${Object.values(SOURCES).map((src) => `<li><p class="valeur" style="font-size:0.95rem">${ech(src.titre)}</p><p class="meta">${ech(src.date)} · <a href="${src.adresse}" target="_blank" rel="noopener">ouvrir le texte</a></p></li>`).join('')}</ul>
+      <p class="discret" style="margin-top:10px">Repères relus sur ces textes le ${dateCourte(RELU_LE)}. Rédaction propre au carnet.</p>
+    </section>
+    ${mention()}`;
+}
+
+/** Met à jour le résultat d'un calcul d'étiquette sans redessiner l'écran (la saisie resterait interrompue). */
+function calculerEtiquette(bloc) {
+  const valeur = (nom) => bloc.querySelector(`[data-entree="${nom}"]`)?.value;
+  const g = bloc.dataset.calcul === 'sodium' ? store.selDepuisSodium(valeur('sodium')) : store.selDeLaPortion(valeur('sel'), valeur('portion'));
+  bloc.querySelector('[data-resultat] b').textContent = g === null ? '…' : g.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+}
+
 // ---------- Feuilles de saisie ----------
 
 function feuilleConsigne(id) {
@@ -469,7 +653,7 @@ function feuille() {
 // ---------- Assemblage ----------
 
 function rendre() {
-  const contenu = ui.vue === 'fiche' ? vueFiche() : ui.vue === 'poids' ? vuePoids() : ui.vue === 'medicaments' ? vueMedicaments() : vueAujourdhui();
+  const contenu = ui.vue === 'fiche' ? vueFiche() : ui.vue === 'poids' ? vuePoids() : ui.vue === 'medicaments' ? vueMedicaments() : ui.vue === 'alimentation' ? vueAlimentation() : vueAujourdhui();
   document.getElementById('app').innerHTML = `
     <header class="barre">
       <div class="marque"><span class="logo">${ic('coeur', 20)}</span>Mon carnet cœur</div>
@@ -521,12 +705,15 @@ document.addEventListener('click', (evenement) => {
 
   const cible = evenement.target.closest('[data-action]');
   if (!cible) return;
-  const [action, a, b] = cible.dataset.action.split(':');
+  const [action, a, b, c] = cible.dataset.action.split(':');
   const jour = aujourdhui();
 
   if (action === 'nav') aller(a);
   else if (action === 'ouvrir') { ui.feuille = { type: a, arg: b }; ui.erreur = ''; rendre(); }
   else if (action === 'fermer') { ui.feuille = null; ui.erreur = ''; rendre(); }
+  else if (action === 'boire') { ui.erreurBoisson = ''; tenter(() => store.boire(etat, jour, a, maintenant()), { fermer: false }); }
+  else if (action === 'retirer-boisson') tenter(() => store.retirerBoisson(etat, jour, a), { fermer: false });
+  else if (action === 'suivi') tenter(() => store.reglerSuivi(etat, a, b, c), { fermer: false });
   else if (action === 'dicter') {
     const champ = cible.closest('form').querySelector('[name="kg"]');
     champ.inputMode = 'text';
@@ -554,7 +741,12 @@ document.addEventListener('submit', (evenement) => {
   const type = formulaire.dataset.form;
   const id = formulaire.dataset.id;
 
-  if (type === 'poids-rapide') tenter(() => store.noterPoids(etat, { date: aujourdhui(), kg: s.kg }, maintenant()));
+  if (type === 'boisson') {
+    // Erreur affichée dans la carte de la bouteille, pas à côté du poids.
+    try { enregistrer(store.boire(etat, aujourdhui(), s.ml, maintenant())); ui.erreurBoisson = ''; } catch (e) { ui.erreurBoisson = e.message; }
+    rendre();
+  }
+  else if (type === 'poids-rapide') tenter(() => store.noterPoids(etat, { date: aujourdhui(), kg: s.kg }, maintenant()));
   else if (type === 'poids') tenter(() => store.noterPoids(etat, s, maintenant()));
   else if (type === 'consigne') tenter(() => store.ecrireConsigne(etat, id, s, maintenant()));
   else if (type === 'rdv') tenter(() => store.ajouterRendezVous(etat, s, maintenant()));
@@ -616,6 +808,11 @@ document.addEventListener('change', async (evenement) => {
     ui.erreur = e.message;
   }
   rendre();
+});
+
+document.addEventListener('input', (evenement) => {
+  const bloc = evenement.target.closest('[data-calcul]');
+  if (bloc) calculerEtiquette(bloc);
 });
 
 document.addEventListener('keydown', (evenement) => {

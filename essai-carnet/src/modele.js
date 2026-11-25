@@ -28,7 +28,8 @@ export const THEMES = [
     id: 'alimentation', titre: 'Alimentation et poids', icone: 'alimentation', couleur: 'ambre',
     champs: [
       { id: 'sel', libelle: 'Sel', aide: 'Préciser s’il s’agit de sel ou de sodium : ce n’est pas la même quantité.' },
-      { id: 'boissons', libelle: 'Boissons par jour' },
+      { id: 'boissons_limite', libelle: 'Limite de boissons par jour', unite: 'L', aide: 'En litres, comme le médecin l’a écrit. Exemple : 1,5. Sert à remplir la bouteille du jour.' },
+      { id: 'boissons', libelle: 'Boissons : ce qui compte, précisions', long: true, aide: 'La phrase du médecin : ce qui compte comme boisson (soupe, café, yaourt…), cas particuliers.' },
       { id: 'alcool', libelle: 'Alcool' },
       { id: 'interactions_a_eviter', libelle: 'Aliments ou produits à éviter', long: true },
       { id: 'poids_reference', libelle: 'Poids de référence', unite: 'kg' },
