@@ -20,7 +20,7 @@ const VUES = [
 // « Ma fiche » n'est plus dans la barre du bas : on y va depuis l'accueil.
 const ROUTES = [...VUES.map((v) => v.id), 'fiche'];
 // À changer avec VERSION dans sw.js à chaque mise en ligne : c'est ce qui dit quelle version on a sous les yeux.
-const VERSION_APPLI = 8;
+const VERSION_APPLI = 9;
 
 // ---------- État ----------
 
@@ -74,6 +74,7 @@ const TRACES = {
   coche: '<path d="m5 12.500 4.500 4.500L19 7.500"/>',
   chevron: '<path d="m9 5.500 6.500 6.500L9 18.500"/>',
   horloge: '<circle cx="12" cy="12" r="8.500"/><path d="M12 7.500V12l3 2"/>',
+  retour: '<path d="m14.500 5.500-6.500 6.500 6.500 6.500"/>',
   croix: '<path d="m6 6 12 12M18 6 6 18"/>',
   micro: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.500 11.500a6.500 6.500 0 0 0 13 0M12 18v3"/>',
   photo: '<rect x="3.500" y="7" width="17" height="12.500" rx="3"/><path d="M8.500 7l1.500-2.500h4L15.500 7"/><circle cx="12" cy="13.200" r="3.200"/>',
@@ -782,14 +783,15 @@ function rendre() {
   const contenu = ui.vue === 'fiche' ? vueFiche() : ui.vue === 'poids' ? vuePoids() : ui.vue === 'medicaments' ? vueMedicaments() : ui.vue === 'alimentation' ? vueAlimentation() : ui.vue === 'liquides' ? vueLiquides() : vueAujourdhui();
   document.getElementById('app').innerHTML = `
     <header class="barre">
-      <div class="marque"><span class="logo">${ic('coeur', 20)}</span>Mon carnet cœur</div>
+      ${ui.vue === 'aujourdhui'
+        ? `<div class="marque"><span class="logo">${ic('coeur', 20)}</span>Mon carnet cœur</div>`
+        : `<button class="retour" data-action="retour" aria-label="Revenir à l’accueil">${ic('retour', 22)} Accueil</button>`}
       <div class="barre-actions">
         <button class="bouton-urgence" data-action="ouvrir:urgence">${ic('telephone', 17)} Urgence</button>
         <button class="bouton-rond" data-action="ouvrir:reglages" aria-label="Sauvegarde">${ic('reglages')}</button>
       </div>
     </header>
     <main class="page">${contenu}</main>
-    <nav class="nav" aria-label="Navigation">${VUES.map((v) => `<button class="${ui.vue === v.id ? 'actif' : ''}" data-action="nav:${v.id}" ${ui.vue === v.id ? 'aria-current="page"' : ''}>${ic(v.icone, 22)}${v.libelle}</button>`).join('')}</nav>
     ${feuille()}`;
   document.body.style.overflow = ui.feuille ? 'hidden' : '';
   if (ui.vue === 'alimentation') filtrerAliments();
@@ -797,9 +799,19 @@ function rendre() {
 
 function aller(vue) {
   ui.vue = vue; ui.feuille = null; ui.erreur = ''; ui.erreurLimite = ''; ui.erreurBoisson = '';
-  if (location.hash.slice(1) !== vue) history.replaceState(null, '', `#${vue}`);
+  if (location.hash.slice(1) !== vue) {
+    // Quitter l'accueil ajoute une étape à l'historique : le geste « retour » du téléphone ramène alors à l'accueil
+    // au lieu de fermer l'appli.
+    if (vue === 'aujourdhui') history.replaceState(null, '', '#aujourdhui');
+    else { history.pushState(null, '', `#${vue}`); ui.retourPossible = true; }
+  }
   rendre();
   window.scrollTo(0, 0);
+}
+
+/** La flèche en haut à gauche : même effet que le geste « retour » du téléphone. */
+function revenir() {
+  if (ui.retourPossible) { ui.retourPossible = false; history.back(); } else aller('aujourdhui');
 }
 
 /** Applique une modification ; affiche l'erreur à l'endroit de la saisie si elle est refusée. */
@@ -836,6 +848,7 @@ document.addEventListener('click', (evenement) => {
   const jour = aujourdhui();
 
   if (action === 'nav') aller(a);
+  else if (action === 'retour') revenir();
   else if (action === 'ouvrir') { ui.feuille = { type: a, arg: b }; ui.erreur = ''; rendre(); }
   else if (action === 'fermer') { ui.feuille = null; ui.erreur = ''; rendre(); }
   else if (action === 'boire') { ui.erreurBoisson = ''; tenter(() => store.boire(etat, jour, a, maintenant()), { fermer: false }); }
@@ -972,7 +985,7 @@ document.addEventListener('keydown', (evenement) => {
   if (evenement.key === 'Escape' && ui.feuille) { ui.feuille = null; ui.erreur = ''; rendre(); }
 });
 
-window.addEventListener('hashchange', () => { ui.vue = vueDepuisAdresse(); ui.feuille = null; rendre(); window.scrollTo(0, 0); });
+window.addEventListener('hashchange', () => { ui.retourPossible = false; ui.vue = vueDepuisAdresse(); ui.feuille = null; rendre(); window.scrollTo(0, 0); });
 
 // Hors ligne : seulement une fois en ligne, jamais pendant le développement sur l'ordinateur.
 if ('serviceWorker' in navigator && !['localhost', '127.0.0.1'].includes(location.hostname)) {

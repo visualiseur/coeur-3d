@@ -45,7 +45,7 @@ h1, h2, h3, p { margin: 0; }
 
 #app { max-width: 520px; margin: 0 auto; min-height: 100vh; position: relative; }
 
-.page { padding: 16px 16px calc(104px + env(safe-area-inset-bottom)); display: grid; gap: 16px; }
+.page { padding: 16px 16px calc(32px + env(safe-area-inset-bottom)); display: grid; gap: 16px; }
 
 /* ---------- Barre du haut ---------- */
 
@@ -401,3 +401,10 @@ input:focus, textarea:focus { outline: none; border-color: var(--primaire); box-
 .lien-carte .chevron { color: var(--encre-pale); }
 
 .en-verres { color: var(--bleu); font-weight: 650; margin-top: 2px; }
+
+/* ---------- Retour à l'accueil ---------- */
+
+.retour {
+  height: 40px; padding: 0 16px 0 8px; border-radius: 20px; border: 1px solid var(--trait); background: var(--carte);
+  display: inline-flex; align-items: center; gap: 4px; font-weight: 700; color: var(--primaire-fonce);
+}
