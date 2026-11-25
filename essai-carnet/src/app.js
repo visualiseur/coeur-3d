@@ -11,12 +11,16 @@ import { versIso, dateLongue, dateCourte, dateTresCourte } from './dates.js';
 
 const CLE = 'carnet-coeur';
 const VUES = [
-  { id: 'aujourdhui', libelle: 'Aujourd’hui', icone: 'soleil' },
-  { id: 'fiche', libelle: 'Ma fiche', icone: 'fiche' },
+  { id: 'aujourdhui', libelle: 'Accueil', icone: 'soleil' },
   { id: 'poids', libelle: 'Poids', icone: 'balance' },
-  { id: 'medicaments', libelle: 'Médicaments', icone: 'medicaments' },
   { id: 'alimentation', libelle: 'Alimentation', icone: 'alimentation' },
+  { id: 'liquides', libelle: 'Liquides', icone: 'goutte' },
+  { id: 'medicaments', libelle: 'Médicaments', icone: 'medicaments' },
 ];
+// « Ma fiche » n'est plus dans la barre du bas : on y va depuis l'accueil.
+const ROUTES = [...VUES.map((v) => v.id), 'fiche'];
+// À changer avec VERSION dans sw.js à chaque mise en ligne : c'est ce qui dit quelle version on a sous les yeux.
+const VERSION_APPLI = 7;
 
 // ---------- État ----------
 
@@ -36,7 +40,7 @@ const ui = { vue: vueDepuisAdresse(), feuille: null, periode: 30, erreur: '', re
 
 function vueDepuisAdresse() {
   const id = location.hash.slice(1);
-  return VUES.some((v) => v.id === id) ? id : 'aujourdhui';
+  return ROUTES.includes(id) ? id : 'aujourdhui';
 }
 
 function enregistrer(nouvelEtat) {
@@ -130,8 +134,14 @@ function vueAujourdhui() {
       <div class="resume">${puces.map((p) => `<span class="puce">${p}</span>`).join('')}</div>
     </section>`;
 
+  const lienFiche = `<button class="carte lien-carte" data-action="nav:fiche">
+      <span class="pastille primaire">${ic('fiche')}</span>
+      <span class="corps"><b>Ma fiche de sortie</b><br><span class="discret">Toutes les consignes écrites par mes soignants</span></span>
+      <span class="chevron">${ic('chevron', 18)}</span>
+    </button>`;
+
   if (carnetVide()) {
-    return `${bandeau}
+    return `${bandeau}${tuilesAccueil()}
       <section class="carte">
         <div class="carte-tete"><span class="pastille primaire">${ic('coeur')}</span><h2>Bienvenue dans votre carnet</h2></div>
         <p class="discret">Il range au même endroit ce que vos soignants ont écrit pour vous, votre poids jour après jour et vos médicaments. Tout reste sur cet appareil.</p>
@@ -197,7 +207,35 @@ function vueAujourdhui() {
         </span><span class="chevron">${ic('chevron', 18)}</span></button></li>`).join('')}</ul>
     </section>` : '';
 
-  return `${bandeau}${bandeauExemple()}${cartePoids}${carteMeds}${carteBoissons()}${carteRdv}${carteRevoir}${mention()}`;
+  return `${bandeau}${bandeauExemple()}${tuilesAccueil()}${cartePoids}${carteMeds}${carteRdv}${carteRevoir}${lienFiche}${mention()}`;
+}
+
+/** Les trois priorités, toujours en haut de l'accueil : poids, alimentation, liquides. */
+function tuilesAccueil() {
+  const jour = aujourdhui();
+  const pesee = etat.poids.find((p) => p.date === jour);
+  const derniere = etat.poids[etat.poids.length - 1];
+  const sel = store.limiteSelG(etat);
+  const limite = store.limiteBoissonsMl(etat);
+  const reste = limite === null ? null : limite - store.totalBuMl(etat, jour);
+  const tuile = (vue, couleur, icone, titre, valeur, detail) => `<button class="tuile-accueil ${couleur}" data-action="nav:${vue}">
+      <span class="pastille ${couleur}">${ic(icone, 24)}</span><b>${titre}</b><span class="val">${valeur}</span><small>${detail}</small>
+    </button>`;
+  return `<div class="tuiles-accueil">
+    ${tuile('poids', 'primaire', 'balance', 'Poids', pesee ? `${nombre(pesee.kg)} kg` : 'À noter', pesee ? 'noté aujourd’hui' : derniere ? `dernier : ${nombre(derniere.kg)} kg` : 'aucune pesée')}
+    ${tuile('alimentation', 'ambre', 'alimentation', 'Alimentation', sel === null ? 'À régler' : `${sel.toLocaleString('fr-FR')} g de sel`, sel === null ? 'ma limite de sel' : 'ma limite par jour')}
+    ${tuile('liquides', 'bleu', 'goutte', 'Liquides', reste === null ? 'À régler' : reste >= 0 ? enMl(reste) : `+ ${enMl(-reste)}`, reste === null ? 'ma limite de liquide' : reste >= 0 ? 'restent aujourd’hui' : 'au-delà de la limite')}
+  </div>`;
+}
+
+/** Saisie d'une limite sur place, sans passer par la fiche. La valeur est rangée dans la fiche quand même. */
+function formulaireLimite(id, { unite, exemple, question }) {
+  return `<form data-form="limite" data-id="${id}" style="display:grid;gap:10px">
+    <label class="champ">${question}<span class="champ-unite"><input type="text" name="valeur" inputmode="decimal" placeholder="${exemple}" autocomplete="off" required><span>${unite}</span></span></label>
+    ${ui.erreurLimite ? `<p class="erreur">${ech(ui.erreurLimite)}</p>` : ''}
+    <button class="bouton large" type="submit">Valider</button>
+    <p class="discret">Donnez la limite fixée par votre médecin. Le carnet n’en choisit pas à sa place.</p>
+  </form>`;
 }
 
 /** Ouvre le clavier complet, celui qui a un micro : la dictée est celle du téléphone, pas de l'application. */
@@ -261,31 +299,57 @@ function carteBoissons() {
 
   let corps;
   if (limite === null) {
-    corps = `<p class="vide">${ecrit ? `La limite notée sur la fiche (« ${ech(ecrit.valeur)} ») n’est pas lisible en litres.` : 'La limite de boissons par jour n’est pas notée sur votre fiche.'}</p>
-      <p class="discret" style="margin-top:6px">Le carnet ne choisit pas de limite à la place du médecin. Notez celle qu’il a écrite, en litres (exemple : 1,5), et la bouteille apparaîtra.</p>
-      <button class="bouton secondaire large" style="margin-top:12px" data-action="ouvrir:consigne:boissons_limite">Noter la limite écrite par le médecin</button>
-      ${bu ? `<p style="margin-top:14px"><span class="grand-nombre">${bu.toLocaleString('fr-FR')}<small>mL bus aujourd’hui</small></span></p>` : ''}
-      <div style="margin-top:14px">${verres}${journal}</div>`;
+    corps = `${ecrit ? `<p class="vide" style="margin-bottom:10px">La limite notée (« ${ech(ecrit.valeur)} ») n’est pas lisible en litres.</p>` : ''}
+      ${formulaireLimite('boissons_limite', { unite: 'L', exemple: '1,5', question: 'Ma limite de liquide par jour' })}
+      <p class="discret" style="margin-top:6px">Dès qu’elle est validée, la bouteille apparaît, pleine de cette quantité.</p>`;
   } else {
     const reste = limite - bu;
+    const enVerres = (ml) => `${(Math.floor(Math.max(0, ml) / 100) / 2).toLocaleString('fr-FR')} verre${ml >= 300 ? 's' : ''} de 200 mL`;
     corps = `<div class="bloc-bouteille">
         ${svgBouteille(limite, bu)}
         <div class="chiffres">
           <div class="discret">${reste >= 0 ? 'Il reste' : 'Au-delà de la limite écrite'}</div>
           <div class="grand-nombre">${Math.abs(reste).toLocaleString('fr-FR')}<small>mL</small></div>
+          ${reste > 0 ? `<div class="en-verres">soit ${enVerres(reste)}</div>` : ''}
           <div class="discret" style="margin-top:8px">Bu aujourd’hui : <b>${enMl(bu)}</b></div>
-          <div class="discret">Limite écrite : <b>${enLitres(limite)}</b></div>
-          <div class="meta" style="font-size:0.8rem;color:var(--encre-pale);margin-top:4px">${origine(ecrit)}</div>
+          <div class="discret">Ma limite : <b>${enLitres(limite)}</b>, soit ${enVerres(limite)}</div>
+          ${ecrit.auteur ? `<div class="meta" style="font-size:0.8rem;color:var(--encre-pale);margin-top:4px">${origine(ecrit)}</div>` : ''}
         </div>
       </div>
       ${verres}${journal}`;
   }
 
   return `<section class="carte">
-    <div class="carte-tete"><span class="pastille bleu">${ic('goutte')}</span><h2>Ma bouteille du jour</h2>${limite !== null ? '<button class="lien" data-action="ouvrir:consigne:boissons_limite">Limite</button>' : ''}</div>
+    <div class="carte-tete"><span class="pastille bleu">${ic('goutte')}</span><h2>Ma bouteille du jour</h2>${limite !== null ? '<button class="lien" data-action="ouvrir:consigne:boissons_limite">Modifier</button>' : ''}</div>
     ${corps}
-    ${precision ? `<div style="margin-top:14px">${precision}</div>` : '<p class="discret" style="margin-top:12px">Ce qui compte comme boisson (soupe, café, yaourt…) : c’est au médecin de le dire. Vous pouvez noter sa réponse dans la fiche.</p>'}
-    <p class="discret" style="margin-top:8px">Les tailles de verre sont des tailles courantes : utilisez « Autre quantité » pour les vôtres. La bouteille repart pleine chaque jour.</p>
+    ${limite === null ? '' : precision ? `<div style="margin-top:14px">${precision}</div>` : '<p class="discret" style="margin-top:12px">Ce qui compte comme boisson (soupe, café, yaourt…) : c’est au médecin de le dire. Vous pouvez noter sa réponse dans la fiche.</p>'}
+    ${limite === null ? '' : '<p class="discret" style="margin-top:8px">Les tailles de verre sont des tailles courantes : utilisez « Autre quantité » pour les vôtres. La bouteille repart pleine chaque jour.</p>'}
+  </section>`;
+}
+
+function vueLiquides() {
+  return `<h1 class="titre-page">Liquides</h1>
+    <p class="sous-titre">Ma limite de liquide du jour : la bouteille se vide à chaque boisson notée.</p>
+    ${bandeauExemple()}${carteBoissons()}${mention()}`;
+}
+
+function carteLimiteSel() {
+  const limite = store.limiteSelG(etat);
+  const ecrit = store.consigneCourante(etat, 'sel_limite');
+  if (limite === null) {
+    return `<section class="carte">
+      <div class="carte-tete"><span class="pastille ambre">${ic('alimentation')}</span><h2>Ma limite de sel</h2></div>
+      ${ecrit ? `<p class="vide" style="margin-bottom:10px">La limite notée (« ${ech(ecrit.valeur)} ») n’est pas lisible en grammes.</p>` : ''}
+      ${formulaireLimite('sel_limite', { unite: 'g', exemple: '6', question: 'Ma limite de sel par jour' })}
+      <p class="discret" style="margin-top:6px">Dès qu’elle est validée, chaque portion d’aliment affiche la part de cette limite qu’elle représente.</p>
+    </section>`;
+  }
+  return `<section class="carte">
+    <div class="carte-tete" style="margin-bottom:0">
+      <span class="pastille ambre">${ic('alimentation')}</span>
+      <div style="flex:1"><div class="discret">Ma limite de sel</div><div class="grand-nombre">${limite.toLocaleString('fr-FR')}<small>g par jour</small></div></div>
+      <button class="lien" data-action="ouvrir:consigne:sel_limite">Modifier</button>
+    </div>
   </section>`;
 }
 
@@ -295,7 +359,7 @@ function bandeauExemple() {
 }
 
 function mention() {
-  return '<p class="mention">Ce carnet affiche ce que vous et vos soignants y avez écrit. Il ne remplace aucun avis médical. En cas de doute, appelez : ne décidez pas seul.</p>';
+  return '<p class="mention">Ce carnet affiche ce que vous et vos soignants y avez écrit. Il ne remplace aucun avis médical. En cas de doute, appelez : ne décidez pas seul.<br>Version ' + VERSION_APPLI + '</p>';
 }
 
 // ---------- Écran : Ma fiche ----------
@@ -509,7 +573,8 @@ function feuilleAliment(code) {
 // ---------- Écran : Alimentation ----------
 
 function vueAlimentation() {
-  const maFiche = CHAMPS_DE_LA_FICHE.map((id) => {
+  // Les deux limites chiffrées ont leur propre place (ici en tête, et sur l'écran Liquides).
+  const maFiche = CHAMPS_DE_LA_FICHE.filter((id) => !['sel_limite', 'boissons_limite', 'boissons'].includes(id)).map((id) => {
     const c = CHAMPS.get(id);
     const v = store.consigneCourante(etat, id);
     return `<li><button class="ligne" data-action="ouvrir:consigne:${id}"><span class="corps">
@@ -528,19 +593,19 @@ function vueAlimentation() {
     </section>`).join('');
 
   return `<h1 class="titre-page">Alimentation</h1>
-    <p class="sous-titre">Ce que dit votre fiche d’abord, puis les repères publiés pour tous les adultes.</p>
+    <p class="sous-titre">Ma limite de sel, et ce que chaque aliment en représente.</p>
     ${bandeauExemple()}
 
+    ${carteLimiteSel()}
+
+    ${carteSel()}
+
     <section class="carte">
-      <div class="carte-tete"><span class="pastille primaire">${ic('fiche')}</span><h2>Ce que dit ma fiche</h2></div>
+      <div class="carte-tete"><span class="pastille primaire">${ic('fiche')}</span><h2>Ce que mes soignants ont ajouté</h2></div>
       <ul class="liste">${maFiche}</ul>
     </section>
 
-    <div class="bandeau priorite">${ic('alerte', 20)}<div class="corps"><b>Votre fiche passe avant.</b> Les repères ci-dessous valent pour les adultes en général. Si votre médecin ou votre diététicien a écrit autre chose pour vous (sel, boissons, aliments à éviter), c’est sa consigne qui compte.</div></div>
-
-    ${carteBoissons()}
-
-    ${carteSel()}
+    <div class="bandeau priorite">${ic('alerte', 20)}<div class="corps"><b>Vos consignes passent avant.</b> Les repères ci-dessous valent pour les adultes en général. Si votre médecin ou votre diététicien a dit autre chose pour vous, c’est sa consigne qui compte.</div></div>
 
     ${groupes}
 
@@ -713,7 +778,7 @@ function feuille() {
 // ---------- Assemblage ----------
 
 function rendre() {
-  const contenu = ui.vue === 'fiche' ? vueFiche() : ui.vue === 'poids' ? vuePoids() : ui.vue === 'medicaments' ? vueMedicaments() : ui.vue === 'alimentation' ? vueAlimentation() : vueAujourdhui();
+  const contenu = ui.vue === 'fiche' ? vueFiche() : ui.vue === 'poids' ? vuePoids() : ui.vue === 'medicaments' ? vueMedicaments() : ui.vue === 'alimentation' ? vueAlimentation() : ui.vue === 'liquides' ? vueLiquides() : vueAujourdhui();
   document.getElementById('app').innerHTML = `
     <header class="barre">
       <div class="marque"><span class="logo">${ic('coeur', 20)}</span>Mon carnet cœur</div>
@@ -730,7 +795,7 @@ function rendre() {
 }
 
 function aller(vue) {
-  ui.vue = vue; ui.feuille = null; ui.erreur = '';
+  ui.vue = vue; ui.feuille = null; ui.erreur = ''; ui.erreurLimite = ''; ui.erreurBoisson = '';
   if (location.hash.slice(1) !== vue) history.replaceState(null, '', `#${vue}`);
   rendre();
   window.scrollTo(0, 0);
@@ -806,7 +871,20 @@ document.addEventListener('submit', (evenement) => {
   const type = formulaire.dataset.form;
   const id = formulaire.dataset.id;
 
-  if (type === 'boisson') {
+  if (type === 'limite') {
+    // La limite saisie sur place doit être un nombre lisible, sinon rien n'est enregistré.
+    try {
+      const essai = store.ecrireConsigne(etat, id, { valeur: s.valeur }, maintenant());
+      const lue = id === 'sel_limite' ? store.limiteSelG(essai) : store.limiteBoissonsMl(essai);
+      if (lue === null) throw new Error(id === 'sel_limite' ? 'Écrivez un nombre de grammes, par exemple 6.' : 'Écrivez un nombre de litres, par exemple 1,5.');
+      enregistrer(essai);
+      ui.erreurLimite = '';
+    } catch (e) {
+      ui.erreurLimite = e.message;
+    }
+    rendre();
+  }
+  else if (type === 'boisson') {
     // Erreur affichée dans la carte de la bouteille, pas à côté du poids.
     try { enregistrer(store.boire(etat, aujourdhui(), s.ml, maintenant())); ui.erreurBoisson = ''; } catch (e) { ui.erreurBoisson = e.message; }
     rendre();
@@ -896,7 +974,16 @@ window.addEventListener('hashchange', () => { ui.vue = vueDepuisAdresse(); ui.fe
 
 // Hors ligne : seulement une fois en ligne, jamais pendant le développement sur l'ordinateur.
 if ('serviceWorker' in navigator && !['localhost', '127.0.0.1'].includes(location.hostname)) {
-  navigator.serviceWorker.register('./sw.js').catch((e) => console.error('Mode hors ligne indisponible', e));
+  // Quand une nouvelle version prend la main sur un appareil qui avait déjà l'appli, on recharge une fois :
+  // sinon l'ancienne version reste à l'écran jusqu'à la prochaine ouverture, et « rien n'a changé ».
+  const avaitDejaUneVersion = Boolean(navigator.serviceWorker.controller);
+  let recharge = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!avaitDejaUneVersion || recharge) return;
+    recharge = true;
+    location.reload();
+  });
+  navigator.serviceWorker.register('./sw.js').then((r) => r.update()).catch((e) => console.error('Mode hors ligne indisponible', e));
 }
 
 rendre();

@@ -378,3 +378,26 @@ input:focus, textarea:focus { outline: none; border-color: var(--primaire); box-
 .portions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .portions button { border: 1.5px solid var(--trait); background: #fff; border-radius: 999px; padding: 8px 12px; font-weight: 650; font-size: 0.9rem; }
 [hidden] { display: none !important; }
+
+/* ---------- Accueil : les trois priorités ---------- */
+
+.tuiles-accueil { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.tuile-accueil {
+  border: 0; border-radius: var(--rayon); background: var(--carte); box-shadow: var(--ombre); padding: 14px 8px 12px;
+  display: grid; justify-items: center; gap: 4px; text-align: center; min-height: 138px; align-content: start;
+  border-top: 5px solid transparent;
+}
+.tuile-accueil.primaire { border-top-color: var(--primaire); }
+.tuile-accueil.ambre { border-top-color: var(--ambre); }
+.tuile-accueil.bleu { border-top-color: var(--bleu); }
+.tuile-accueil .pastille { width: 46px; height: 46px; border-radius: 15px; margin-bottom: 2px; }
+.tuile-accueil b { font-size: 0.95rem; letter-spacing: -0.01em; }
+.tuile-accueil .val { font-size: 1rem; font-weight: 750; letter-spacing: -0.02em; line-height: 1.15; }
+.tuile-accueil small { font-size: 0.72rem; color: var(--encre-pale); line-height: 1.2; }
+.tuile-accueil:active { transform: translateY(1px); }
+
+.lien-carte { width: 100%; border: 0; text-align: left; display: flex; align-items: center; gap: 12px; }
+.lien-carte .corps { flex: 1; min-width: 0; }
+.lien-carte .chevron { color: var(--encre-pale); }
+
+.en-verres { color: var(--bleu); font-weight: 650; margin-top: 2px; }

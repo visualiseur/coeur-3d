@@ -189,17 +189,19 @@ export function selDeLaPortion(selPour100g, portionG) {
 // ---------- Boissons : la bouteille du jour ----------
 
 /**
- * La limite écrite sur la fiche, en millilitres. Le champ est en litres (« 1,5 »).
- * null si rien n'est écrit ou si la valeur n'est pas un nombre de litres plausible : on ne devine pas.
+ * La limite de liquide par jour, en millilitres. Le champ est en litres (« 1,5 »).
+ * Un nombre entre 200 et 6000 est lu comme des millilitres (« 1500 ») : personne n'est limité à 1500 litres.
+ * null si rien n'est écrit ou si la valeur n'est pas lisible : le carnet ne choisit pas de limite.
  */
 export function limiteBoissonsMl(etat) {
   const v = consigneCourante(etat, 'boissons_limite');
   if (!v) return null;
-  const propre = v.valeur.toLowerCase().replace(/litres?|l\b/g, ' ').replace(',', '.').replace(/\s+/g, '');
+  const propre = v.valeur.toLowerCase().replace(/millilitres?|litres?|ml\b|l\b/g, ' ').replace(',', '.').replace(/\s+/g, '');
   if (!/^\d+(\.\d+)?$/.test(propre)) return null;
-  const litres = Number(propre);
-  if (litres < 0.2 || litres > 6) return null;
-  return Math.round(litres * 1000);
+  const n = Number(propre);
+  if (n >= 0.2 && n <= 6) return Math.round(n * 1000);
+  if (n >= 200 && n <= 6000) return Math.round(n);
+  return null;
 }
 
 /** Note une boisson (en mL) pour un jour. */
