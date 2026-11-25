@@ -20,7 +20,7 @@ const VUES = [
 // « Ma fiche » n'est plus dans la barre du bas : on y va depuis l'accueil.
 const ROUTES = [...VUES.map((v) => v.id), 'fiche'];
 // À changer avec VERSION dans sw.js à chaque mise en ligne : c'est ce qui dit quelle version on a sous les yeux.
-const VERSION_APPLI = 7;
+const VERSION_APPLI = 8;
 
 // ---------- État ----------
 
@@ -295,7 +295,8 @@ function carteBoissons() {
     ${ui.erreurBoisson ? `<p class="erreur" style="margin-top:10px">${ech(ui.erreurBoisson)}</p>` : ''}`;
 
   const journal = boissons.length ? `<div class="journal-boissons">${boissons.map((b, i) => `<button data-action="retirer-boisson:${i}" aria-label="Retirer ${b.ml} mL"><span>${b.ml} mL</span>${ic('croix', 14)}</button>`).join('')}</div>
-    <p class="discret" style="margin-top:6px">Touchez une boisson pour la retirer si elle a été notée par erreur.</p>` : '';
+    <p class="discret" style="margin-top:6px">Touchez une boisson pour la retirer si elle a été notée par erreur.</p>
+    <button class="bouton neutre large" style="margin-top:12px" data-action="vider-boissons">Remettre la bouteille à plein</button>` : '';
 
   let corps;
   if (limite === null) {
@@ -323,7 +324,7 @@ function carteBoissons() {
     <div class="carte-tete"><span class="pastille bleu">${ic('goutte')}</span><h2>Ma bouteille du jour</h2>${limite !== null ? '<button class="lien" data-action="ouvrir:consigne:boissons_limite">Modifier</button>' : ''}</div>
     ${corps}
     ${limite === null ? '' : precision ? `<div style="margin-top:14px">${precision}</div>` : '<p class="discret" style="margin-top:12px">Ce qui compte comme boisson (soupe, café, yaourt…) : c’est au médecin de le dire. Vous pouvez noter sa réponse dans la fiche.</p>'}
-    ${limite === null ? '' : '<p class="discret" style="margin-top:8px">Les tailles de verre sont des tailles courantes : utilisez « Autre quantité » pour les vôtres. La bouteille repart pleine chaque jour.</p>'}
+    ${limite === null ? '' : '<p class="discret" style="margin-top:8px">Les tailles de verre sont des tailles courantes : utilisez « Autre quantité » pour les vôtres. La bouteille repart pleine toute seule chaque matin.</p>'}
   </section>`;
 }
 
@@ -838,6 +839,7 @@ document.addEventListener('click', (evenement) => {
   else if (action === 'ouvrir') { ui.feuille = { type: a, arg: b }; ui.erreur = ''; rendre(); }
   else if (action === 'fermer') { ui.feuille = null; ui.erreur = ''; rendre(); }
   else if (action === 'boire') { ui.erreurBoisson = ''; tenter(() => store.boire(etat, jour, a, maintenant()), { fermer: false }); }
+  else if (action === 'vider-boissons') { if (confirm('Remettre la bouteille à plein ? Les boissons notées aujourd’hui seront effacées.')) tenter(() => store.viderBoissons(etat, jour), { fermer: false }); }
   else if (action === 'retirer-boisson') tenter(() => store.retirerBoisson(etat, jour, a), { fermer: false });
   else if (action === 'portion') {
     const bloc = cible.closest('[data-calcul]');

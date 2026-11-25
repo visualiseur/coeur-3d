@@ -219,6 +219,13 @@ export function retirerBoisson(etat, date, position) {
   return { ...etat, boissons: { ...etat.boissons, [date]: duJour } };
 }
 
+/** Remet la bouteille d'un jour à plein : toutes les boissons notées ce jour-là sont retirées. */
+export function viderBoissons(etat, date) {
+  const boissons = { ...etat.boissons };
+  delete boissons[date];
+  return { ...etat, boissons };
+}
+
 export const boissonsDuJour = (etat, date) => etat.boissons[date] ?? [];
 export const totalBuMl = (etat, date) => boissonsDuJour(etat, date).reduce((somme, b) => somme + b.ml, 0);
 
