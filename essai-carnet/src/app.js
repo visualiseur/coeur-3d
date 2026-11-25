@@ -22,7 +22,7 @@ const VUES = [
 // « Ma fiche » n'est plus dans la barre du bas : on y va depuis l'accueil.
 const ROUTES = [...VUES.map((v) => v.id), 'fiche', 'soignant'];
 // À changer avec VERSION dans sw.js à chaque mise en ligne : c'est ce qui dit quelle version on a sous les yeux.
-const VERSION_APPLI = 11;
+const VERSION_APPLI = 12;
 
 // ---------- État ----------
 
@@ -122,7 +122,8 @@ function vueAujourdhui() {
   const prisesPrevues = meds.flatMap((m) => MOMENTS.filter((mo) => m.moments[mo.id]).map((mo) => [m.id, mo.id]));
   const prisesFaites = prisesPrevues.filter(([m, mo]) => store.estPris(etat, jour, m, mo)).length;
   const pesee = etat.poids.find((p) => p.date === jour);
-  const prochain = store.rendezVousAVenir(etat, jour)[0];
+  const aVenir = store.rendezVousAVenir(etat, jour);
+  const prochain = aVenir[0];
 
   const puces = [
     pesee ? `${ic('coche', 15)} Poids noté` : `${ic('balance', 15)} Poids à noter`,
@@ -195,12 +196,12 @@ function vueAujourdhui() {
 
   const carteRdv = `
     <section class="carte">
-      <div class="carte-tete"><span class="pastille ambre">${ic('calendrier')}</span><h2>Prochain rendez-vous</h2><button class="lien" data-action="ouvrir:rdv">Ajouter</button></div>
-      ${prochain
-        ? `<div class="ligne" style="padding:0"><div class="corps">
-             <div class="valeur">${ech(dateLongue(prochain.date))}${prochain.heure ? ` à ${ech(prochain.heure)}` : ''}</div>
-             <div class="libelle">${ech([prochain.avec, prochain.lieu].filter(Boolean).join(' · ')) || 'Sans précision'}</div>
-           </div><button class="bouton-rond" data-action="suppr-rdv:${prochain.id}" aria-label="Retirer ce rendez-vous">${ic('croix', 18)}</button></div>`
+      <div class="carte-tete"><span class="pastille ambre">${ic('calendrier')}</span><h2>Mes rendez-vous</h2><button class="lien" data-action="ouvrir:rdv">Ajouter</button></div>
+      ${aVenir.length
+        ? `<ul class="liste">${aVenir.map((r) => `<li><div class="ligne"><div class="corps">
+             <div class="valeur">${ech(dateLongue(r.date))}${r.heure ? ` à ${ech(r.heure.replace(':', ' h '))}` : ''}</div>
+             <div class="libelle">${ech([r.avec, r.lieu].filter(Boolean).join(' · ')) || 'Sans précision'}</div>
+           </div><button class="bouton-rond" data-action="suppr-rdv:${r.id}" aria-label="Retirer le rendez-vous du ${dateCourte(r.date)}">${ic('croix', 18)}</button></div></li>`).join('')}</ul>`
         : '<p class="vide">Aucun rendez-vous noté.</p>'}
     </section>`;
 
@@ -833,7 +834,13 @@ function feuilleRdv() {
     <form data-form="rdv">
       <div class="deux">
         <label class="champ">Date<input type="date" name="date" min="${aujourdhui()}" required></label>
-        <label class="champ">Heure<input type="time" name="heure"></label>
+        <div class="champ"><span>Heure</span>
+          <!-- Deux listes plutôt que l'horloge du téléphone : sur certains écrans son cadran est petit et son bouton sort du cadre. -->
+          <span class="heure-minutes">
+            <select name="heureH" aria-label="Heure"><option value="">—</option>${Array.from({ length: 24 }, (_, h) => `<option value="${String(h).padStart(2, '0')}">${h} h</option>`).join('')}</select>
+            <select name="heureM" aria-label="Minutes">${['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map((m) => `<option value="${m}">${m}</option>`).join('')}</select>
+          </span>
+        </div>
       </div>
       <label class="champ">Avec<input type="text" name="avec" placeholder="Cardiologue" autocomplete="off"></label>
       <label class="champ">Lieu<input type="text" name="lieu" autocomplete="off"></label>
@@ -1042,7 +1049,7 @@ document.addEventListener('submit', (evenement) => {
   else if (type === 'poids-rapide') tenter(() => store.noterPoids(etat, { date: aujourdhui(), kg: s.kg }, maintenant()));
   else if (type === 'poids') tenter(() => store.noterPoids(etat, s, maintenant()));
   else if (type === 'consigne') tenter(() => store.ecrireConsigne(etat, id, s, maintenant()));
-  else if (type === 'rdv') tenter(() => store.ajouterRendezVous(etat, s, maintenant()));
+  else if (type === 'rdv') tenter(() => store.ajouterRendezVous(etat, { ...s, heure: s.heureH ? `${s.heureH}:${s.heureM || '00'}` : '' }, maintenant()));
   else if (type === 'medicament') {
     const saisie = { ...s, moments: Object.fromEntries(MOMENTS.map((m) => [m.id, s[`moment-${m.id}`] === 'on'])) };
     const photo = ui.feuille?.photo; // undefined : inchangée ; null : retirée ; texte : nouvelle image

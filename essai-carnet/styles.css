@@ -416,3 +416,14 @@ input:focus, textarea:focus { outline: none; border-color: var(--primaire); box-
 .cadre-qr { background: #fff; border: 1.5px solid var(--trait); border-radius: 18px; padding: 10px; margin: 12px auto; max-width: 320px; }
 .qr { width: 100%; height: auto; display: block; }
 .lien-a-copier { font-size: 0.78rem; min-height: 0; word-break: break-all; color: var(--encre-douce); margin: 6px 0 10px; }
+
+/* ---------- Rendez-vous : heure en deux listes ---------- */
+
+div.champ > span:first-child { font-size: 0.9rem; font-weight: 650; color: var(--encre-douce); }
+div.champ { display: grid; gap: 6px; }
+.heure-minutes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+select {
+  width: 100%; border: 1.5px solid var(--trait); background: #fff; border-radius: 14px; padding: 12px 10px; min-height: 48px;
+  font: inherit; font-weight: 500; color: var(--encre);
+}
+select:focus { outline: none; border-color: var(--primaire); box-shadow: 0 0 0 4px var(--primaire-clair); }
