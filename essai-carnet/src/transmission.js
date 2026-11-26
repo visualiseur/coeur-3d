@@ -6,10 +6,15 @@
 // Limite à dire franchement : le carnet ne peut pas prouver QUI a écrit les consignes reçues. Il affiche le nom
 // indiqué et demande au patient de confirmer. C'est le même niveau de preuve qu'une fiche papier.
 
-import { CHAMPS, MOMENTS } from './modele.js';
+import { THEMES, CHAMPS, MOMENTS } from './modele.js';
 import { estDateIso } from './dates.js';
 
 export const PREFIXE = 'recu=';
+// Version 14 : le même colis, compressé (une fiche entière ne tenait pas dans un QR code).
+export const PREFIXE_COMPRESSE = 'recuz=';
+
+/** L'adresse contient-elle des consignes (compressées ou non) ? */
+export const contientDesConsignes = (fragment) => /^#?recuz?=/.test(fragment);
 const VERSION_DU_COLIS = 1;
 const LONGUEUR_MAX = 600;
 const MEDICAMENTS_MAX = 20;
@@ -17,15 +22,8 @@ const IDS_MOMENTS = MOMENTS.map((m) => m.id);
 
 const texte = (v) => (typeof v === 'string' ? v.trim() : '');
 
-/** Les champs que la page soignant propose, dans l'ordre. Tous sont des champs de la fiche. */
-export const CHAMPS_SOIGNANT = [
-  { titre: 'Poids', ids: ['poids_reference', 'consigne_poids'] },
-  { titre: 'Sel', ids: ['sel_limite', 'sel'] },
-  { titre: 'Liquides', ids: ['boissons_limite', 'boissons'] },
-  { titre: 'Effort', ids: ['fc_cible_min', 'fc_cible_max', 'fc_ne_pas_depasser'] },
-  { titre: 'Traitement', ids: ['en_cas_d_oubli'] },
-  { titre: 'Contact', ids: ['numero_service'] },
-];
+/** Les champs que la page soignant propose : toute la fiche, thème par thème (version 14). */
+export const CHAMPS_SOIGNANT = THEMES.map((t) => ({ id: t.id, titre: t.titre, icone: t.icone, couleur: t.couleur, ids: t.champs.map((c) => c.id) }));
 
 /**
  * Les médicaments transmis (facultatifs). Dans le colis, chacun s'écrit en abrégé pour garder le QR code lisible :
@@ -72,8 +70,7 @@ export function verifierColis(colis) {
 const versBase64Url = (octets) => btoa(String.fromCharCode(...octets)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const depuisBase64Url = (t) => Uint8Array.from(atob(t.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
 
-/** Fabrique la partie d'adresse (après « # ») qui transporte les consignes. */
-export function emballer({ auteur, date, reevaluerLe, consignes, medicaments = [] }) {
+function colisDepuis({ auteur, date, reevaluerLe, consignes, medicaments = [] }) {
   const c = Object.fromEntries(Object.entries(consignes).map(([id, v]) => [id, texte(v)]).filter(([, v]) => v));
   const colis = { v: VERSION_DU_COLIS, a: texte(auteur), d: date, c };
   if (reevaluerLe) colis.r = reevaluerLe;
@@ -88,7 +85,38 @@ export function emballer({ auteur, date, reevaluerLe, consignes, medicaments = [
   });
   if (m.length) colis.m = m;
   verifierColis(colis); // refuse d'emballer ce qu'on refuserait de déballer
-  return PREFIXE + versBase64Url(new TextEncoder().encode(JSON.stringify(colis)));
+  return colis;
+}
+
+/** Fabrique la partie d'adresse (après « # ») qui transporte les consignes, sans compression. */
+export function emballer(saisie) {
+  return PREFIXE + versBase64Url(new TextEncoder().encode(JSON.stringify(colisDepuis(saisie))));
+}
+
+async function passerPar(flux, octets) {
+  return new Uint8Array(await new Response(new Blob([octets]).stream().pipeThrough(flux)).arrayBuffer());
+}
+
+/**
+ * Comme emballer, mais compressé quand le navigateur le permet (« deflate », la compression des fichiers zip).
+ * Garde la forme la plus courte : un petit colis peut être plus court non compressé.
+ */
+export async function emballerCompact(saisie) {
+  const simple = emballer(saisie);
+  if (typeof CompressionStream === 'undefined') return simple;
+  const octets = await passerPar(new CompressionStream('deflate'), new TextEncoder().encode(JSON.stringify(colisDepuis(saisie))));
+  const compresse = PREFIXE_COMPRESSE + versBase64Url(octets);
+  return compresse.length < simple.length ? compresse : simple;
+}
+
+/** Lit la partie d'adresse reçue, compressée ou non. Lève une erreur lisible sinon. */
+export async function deballerTout(fragment) {
+  const brut = fragment.replace(/^#/, '');
+  if (!brut.startsWith(PREFIXE_COMPRESSE)) return deballer(brut);
+  if (typeof DecompressionStream === 'undefined') throw new Error('Ce téléphone est trop ancien pour lire ce code. Mettez à jour son navigateur, ou demandez au soignant le lien.');
+  let colis;
+  try { colis = JSON.parse(new TextDecoder().decode(await passerPar(new DecompressionStream('deflate'), depuisBase64Url(brut.slice(PREFIXE_COMPRESSE.length))))); } catch { throw new Error('Les consignes reçues sont abîmées ou incomplètes.'); }
+  return verifierColis(colis);
 }
 
 /** Lit la partie d'adresse reçue. Lève une erreur lisible si ce n'est pas un colis de consignes. */

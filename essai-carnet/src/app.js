@@ -7,7 +7,7 @@ import { geometrie } from './courbe.js';
 import * as depot from './photos.js';
 import { GROUPES, POUR_LE_GOUT, SOURCES, CHAMPS_DE_LA_FICHE, RELU_LE } from './alimentation.js';
 import { FAMILLES_SEL, VERSION_CIQUAL } from './sel-aliments.js';
-import { deballer, PREFIXE } from './transmission.js';
+import { deballerTout, contientDesConsignes } from './transmission.js';
 import { VERSION_APPLI, ech, ic } from './affichage.js';
 import { versIso, dateLongue, dateCourte, dateTresCourte } from './dates.js';
 
@@ -20,10 +20,8 @@ const VUES = [
   { id: 'medicaments', libelle: 'Médicaments', icone: 'medicaments' },
 ];
 // « Ma fiche » n'est plus dans la barre du bas : on y va depuis l'accueil.
-// L'espace soignant n'est plus un écran du carnet : c'est une page à part, soignant.html (version 13).
-const ROUTES = [...VUES.map((v) => v.id), 'fiche'];
-// Les anciennes adresses « #soignant » mènent à la page soignant.
-if (location.hash === '#soignant') location.replace('./soignant.html');
+// « soignant » : dans le carnet, les fiches reçues des soignants. Le soignant, lui, remplit soignant.html (versions 13 et 14).
+const ROUTES = [...VUES.map((v) => v.id), 'fiche', 'soignant'];
 
 // ---------- État ----------
 
@@ -114,11 +112,12 @@ function vueAujourdhui() {
       <span class="chevron">${ic('chevron', 18)}</span>
     </button>`;
 
-  const lienSoignant = `<a class="carte lien-carte" href="./soignant.html">
-      <span class="pastille vert">${ic('plus')}</span>
-      <span class="corps"><b>Espace soignant</b><br><span class="discret">La page où un soignant prépare vos consignes, à ouvrir sur son ordinateur</span></span>
+  const nbFiches = (etat.fichesRecues ?? []).length;
+  const lienSoignant = `<button class="carte lien-carte" data-action="nav:soignant">
+      <span class="pastille vert">${ic('fiche')}</span>
+      <span class="corps"><b>Espace soignant</b><br><span class="discret">${nbFiches ? `${nbFiches} fiche${nbFiches > 1 ? 's' : ''} reçue${nbFiches > 1 ? 's' : ''} de mes soignants` : 'Les fiches envoyées par mes soignants'}</span></span>
       <span class="chevron">${ic('chevron', 18)}</span>
-    </a>`;
+    </button>`;
 
   if (carnetVide()) {
     return `${bandeau}${tuilesAccueil()}
@@ -227,11 +226,12 @@ function boutonDicter() {
 // ---------- Consignes transmises par un soignant, sans serveur ----------
 
 /** Si l'adresse d'ouverture contient des consignes, on les présente au patient, puis on les retire de l'adresse. */
-function traiterReception() {
-  if (!location.hash.startsWith(`#${PREFIXE}`)) return;
-  try { ui.feuille = { type: 'reception', colis: deballer(location.hash) }; } catch (e) { ui.feuille = { type: 'reception', erreur: e.message }; }
+async function traiterReception() {
+  if (!contientDesConsignes(location.hash)) return;
+  const fragment = location.hash;
   history.replaceState(null, '', '#aujourdhui');
   ui.vue = 'aujourdhui';
+  try { ui.feuille = { type: 'reception', colis: await deballerTout(fragment) }; } catch (e) { ui.feuille = { type: 'reception', erreur: e.message }; }
 }
 
 function feuilleReception({ colis, erreur }) {
@@ -283,6 +283,69 @@ function receptionMedicaments(colis) {
       <ul class="liste">${lignes.map(ligne).join('')}</ul>
       ${autres}
     </section>`;
+}
+
+const adressePageSoignant = () => new URL('./soignant.html', location.href).href;
+
+/** Côté patient, l'espace soignant garde les fiches reçues : on les relit, on ne les remplit pas ici. */
+function vueSoignant() {
+  const fiches = store.fichesRecues(etat);
+  const ligne = (f) => {
+    const n = f.consignes.length, m = f.medicaments.length;
+    const quoi = [n ? `${n} consigne${n > 1 ? 's' : ''}` : '', m ? `${m} médicament${m > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ');
+    return `<li><button class="ligne" data-action="ouvrir:fiche-recue:${f.id}">
+        <span class="corps"><span class="libelle">${ech(f.auteur)}</span><br><span class="valeur">Écrite le ${f.date ? dateCourte(f.date) : '?'}</span><br><span class="meta">${quoi}</span></span>
+        <span class="chevron">${ic('chevron', 18)}</span>
+      </button></li>`;
+  };
+  return `<h1 class="titre-page">Espace soignant</h1>
+    <p class="sous-titre">Les fiches que vos soignants vous ont transmises, telles qu’ils les ont écrites. Touchez une fiche pour la relire en détail.</p>
+    <section class="carte">
+      <div class="carte-tete"><span class="pastille vert">${ic('fiche')}</span><h2>Fiches reçues</h2><span class="compte">${fiches.length || ''}</span></div>
+      ${fiches.length ? `<ul class="liste">${fiches.map(ligne).join('')}</ul>` : '<p class="vide">Aucune fiche reçue pour l’instant. Quand un soignant vous en transmet une, par un QR code ou un lien, elle reste rangée ici.</p>'}
+    </section>
+    <section class="carte">
+      <div class="carte-tete"><span class="pastille primaire">${ic('telephone')}</span><h2>Pour votre soignant</h2></div>
+      <p class="discret">Votre soignant remplit votre fiche sur son ordinateur, à cette adresse. Il n’a pas besoin du carnet.</p>
+      <textarea class="lien-a-copier" readonly rows="2" aria-label="Adresse de la page soignant">${ech(adressePageSoignant())}</textarea>
+      <div class="rangee">
+        <button class="bouton secondaire" data-action="copier-adresse-soignant">Copier l’adresse</button>
+        ${navigator.share ? '<button class="bouton secondaire" data-action="partager-adresse-soignant">Partager</button>' : ''}
+      </div>
+    </section>
+    ${mention()}`;
+}
+
+/** Une fiche reçue, en détail : ce qui a été écrit, thème par thème, et ce qu'elle a changé dans les médicaments. */
+function feuilleFicheRecue(id) {
+  const f = (etat.fichesRecues ?? []).find((x) => x.id === id);
+  const tete = `<div class="feuille-tete"><h2>Fiche reçue</h2><button class="bouton-rond" data-action="fermer" aria-label="Fermer">${ic('croix', 18)}</button></div>`;
+  if (!f) return `${tete}<p class="vide">Cette fiche n’existe plus dans le carnet.</p>`;
+  const parTheme = THEMES.map((th) => ({ th, lignes: f.consignes.filter((c) => CHAMPS.get(c.id)?.theme === th.id) })).filter((x) => x.lignes.length);
+  const themes = parTheme.map(({ th, lignes }) => `<section class="carte">
+      <div class="carte-tete"><span class="pastille ${th.couleur}">${ic(th.icone)}</span><h2>${ech(th.titre)}</h2></div>
+      <ul class="liste">${lignes.map(({ id: c, valeur }) => `<li class="ligne"><span class="corps"><span class="libelle">${ech(CHAMPS.get(c).libelle)}</span><br><span class="valeur">${avecUnite(CHAMPS.get(c), valeur)}</span></span></li>`).join('')}</ul>
+    </section>`).join('');
+  const meds = f.medicaments.length ? `<section class="carte">
+      <div class="carte-tete"><span class="pastille bleu">${ic('medicaments')}</span><h2>Médicaments</h2></div>
+      <ul class="liste">${f.medicaments.map((m) => {
+        const [couleur, mot] = ETIQUETTES_MEDICAMENT[m.type] ?? ['neutre', ''];
+        const detail = m.type === 'change' && m.avant ? `Avant : ${ech(descriptionPrise(m.avant))}<br>Maintenant : <b>${ech(descriptionPrise(m))}</b>`
+          : m.arreter ? (m.type === 'arret' ? 'Arrêté' : 'À arrêter, mais absent du carnet à la réception')
+          : `<b>${ech(descriptionPrise(m))}</b>`;
+        return `<li class="ligne"><span class="corps"><span class="libelle">${ech(m.nom)}</span> ${mot ? `<span class="etiquette ${couleur}">${mot}</span>` : ''}<br><span class="detail-med">${detail}</span>${m.aQuoiCaSert && !m.arreter ? `<br><span class="discret">À quoi ça sert : ${ech(m.aQuoiCaSert)}</span>` : ''}</span></li>`;
+      }).join('')}</ul>
+    </section>` : '';
+  return `${tete}
+    <div class="bloc">
+      <section class="carte">
+        <p class="discret">Écrite par</p>
+        <p class="valeur" style="font-weight:700;font-size:1.1rem">${ech(f.auteur)}</p>
+        <p class="discret">le ${f.date ? dateCourte(f.date) : '?'}${f.reevaluerLe ? ` · à réévaluer le ${dateCourte(f.reevaluerLe)}` : ''}<br>Reçue le ${f.recuLe ? dateCourte(f.recuLe.slice(0, 10)) : '?'}</p>
+      </section>
+      ${themes}${meds}
+      <p class="discret">C’est la fiche telle qu’elle a été reçue. Si une valeur a été changée depuis, la valeur actuelle est dans « Ma fiche ».</p>
+    </div>`;
 }
 
 function bandeauReception() {
@@ -840,6 +903,7 @@ function feuille() {
   const { type, arg } = ui.feuille;
   const contenu = type === 'consigne' ? feuilleConsigne(arg)
     : type === 'medicament' ? feuilleMedicament(arg)
+    : type === 'fiche-recue' ? feuilleFicheRecue(arg)
     : type === 'rdv' ? feuilleRdv()
     : type === 'photo' ? feuillePhoto(arg)
     : type === 'aliment' ? feuilleAliment(arg)
@@ -852,7 +916,7 @@ function feuille() {
 // ---------- Assemblage ----------
 
 function rendre() {
-  const contenu = ui.vue === 'fiche' ? vueFiche() : ui.vue === 'poids' ? vuePoids() : ui.vue === 'medicaments' ? vueMedicaments() : ui.vue === 'alimentation' ? vueAlimentation() : ui.vue === 'liquides' ? vueLiquides() : vueAujourdhui();
+  const contenu = ui.vue === 'fiche' ? vueFiche() : ui.vue === 'poids' ? vuePoids() : ui.vue === 'medicaments' ? vueMedicaments() : ui.vue === 'alimentation' ? vueAlimentation() : ui.vue === 'liquides' ? vueLiquides() : ui.vue === 'soignant' ? vueSoignant() : vueAujourdhui();
   document.getElementById('app').innerHTML = `
     <header class="barre">
       ${ui.vue === 'aujourdhui'
@@ -925,6 +989,10 @@ document.addEventListener('click', (evenement) => {
   else if (action === 'fermer') { ui.feuille = null; ui.erreur = ''; rendre(); }
   else if (action === 'accepter-reception') { const colis = ui.feuille?.colis; if (colis) tenter(() => store.recevoirConsignes(etat, colis, maintenant())); }
   else if (action === 'vu-reception') tenter(() => store.marquerReceptionVue(etat), { fermer: false });
+  else if (action === 'copier-adresse-soignant') {
+    navigator.clipboard.writeText(adressePageSoignant()).then(() => { cible.textContent = 'Adresse copiée'; }).catch(() => { document.querySelector('.lien-a-copier')?.select(); });
+  }
+  else if (action === 'partager-adresse-soignant') navigator.share({ title: 'Page soignant du carnet', url: adressePageSoignant() }).catch(() => {});
   else if (action === 'boire') { ui.erreurBoisson = ''; tenter(() => store.boire(etat, jour, a, maintenant()), { fermer: false }); }
   else if (action === 'vider-boissons') { if (confirm('Remettre la bouteille à plein ? Les boissons notées aujourd’hui seront effacées.')) tenter(() => store.viderBoissons(etat, jour), { fermer: false }); }
   else if (action === 'retirer-boisson') tenter(() => store.retirerBoisson(etat, jour, a), { fermer: false });
@@ -1059,7 +1127,7 @@ document.addEventListener('keydown', (evenement) => {
   if (evenement.key === 'Escape' && ui.feuille) { ui.feuille = null; ui.erreur = ''; rendre(); }
 });
 
-window.addEventListener('hashchange', () => { ui.retourPossible = false; ui.vue = vueDepuisAdresse(); ui.feuille = null; traiterReception(); rendre(); window.scrollTo(0, 0); });
+window.addEventListener('hashchange', async () => { ui.retourPossible = false; ui.vue = vueDepuisAdresse(); ui.feuille = null; await traiterReception(); rendre(); window.scrollTo(0, 0); });
 
 // Hors ligne : seulement une fois en ligne, jamais pendant le développement sur l'ordinateur.
 if ('serviceWorker' in navigator && !['localhost', '127.0.0.1'].includes(location.hostname)) {
@@ -1075,6 +1143,6 @@ if ('serviceWorker' in navigator && !['localhost', '127.0.0.1'].includes(locatio
   navigator.serviceWorker.register('./sw.js').then((r) => r.update()).catch((e) => console.error('Mode hors ligne indisponible', e));
 }
 
-traiterReception();
 rendre();
+traiterReception().then(() => { if (ui.feuille) rendre(); });
 depot.toutes().then((lues) => { photos = lues; if (lues.size) rendre(); }).catch((e) => console.error('Photos illisibles sur cet appareil', e));

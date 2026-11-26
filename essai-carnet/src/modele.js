@@ -9,6 +9,18 @@
 
 export const THEMES = [
   {
+    // Une valeur recopiée du compte rendu, jamais interprétée (2_Projet-outil/04, § 4). Ajouté en version 14.
+    id: 'coeur', titre: 'Mon cœur', icone: 'coeur', couleur: 'primaire',
+    champs: [
+      { id: 'fevg', libelle: 'Fraction d’éjection (FEVG)', unite: '%', aide: 'La valeur écrite sur le compte rendu, sans l’arrondir.' },
+      { id: 'fevg_examen', libelle: 'Mesurée par quel examen, et quand', aide: 'Exemple : échographie du 2 novembre 2026.' },
+      // Pas d'unité imposée : les médecins écrivent « 120/70 » (mmHg) aussi bien que « 12/7 » (cmHg).
+      { id: 'tension_moyenne', libelle: 'Tension moyenne', aide: 'Comme le médecin l’a écrite, avec l’unité. Exemple : 120/70 mmHg.' },
+      { id: 'tension_basse', libelle: 'Tension, limite basse', aide: 'Comme le médecin l’a écrite, avec l’unité.' },
+      { id: 'tension_haute', libelle: 'Tension, limite haute', aide: 'Comme le médecin l’a écrite, avec l’unité.' },
+    ],
+  },
+  {
     id: 'activite', titre: 'Activité physique', icone: 'activite', couleur: 'vert',
     champs: [
       { id: 'fc_repos', libelle: 'Fréquence cardiaque de repos', unite: 'bpm' },

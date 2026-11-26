@@ -442,3 +442,10 @@ a.bouton { text-decoration: none; box-sizing: border-box; }
 .deux input { min-width: 0; width: 100%; box-sizing: border-box; }
 .detail-med { display: inline-block; margin-top: 4px; line-height: 1.45; }
 .med-actions .lien { background: none; border: 0; padding: 6px 0; color: var(--encre-douce); font-weight: 600; text-decoration: underline; cursor: pointer; }
+.titre-section { font-size: 1.05rem; margin: 8px 2px -4px; color: var(--encre-douce); }
+.theme-soignant > summary { list-style: none; cursor: pointer; margin-bottom: 0; }
+.theme-soignant > summary::-webkit-details-marker { display: none; }
+.theme-soignant > summary .chevron { color: var(--encre-pale); transition: transform 0.15s; }
+.theme-soignant[open] > summary { margin-bottom: 14px; }
+.theme-soignant[open] > summary .chevron { transform: rotate(90deg); }
+.theme-soignant > summary .compte { margin-left: auto; }

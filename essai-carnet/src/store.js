@@ -12,7 +12,7 @@ export const SCHEMA = 1;
 export const FORMAT = 'carnet-coeur';
 
 export function etatVide() {
-  return { schema: SCHEMA, exemple: false, consignes: {}, medicaments: [], prises: {}, poids: [], rendezVous: [], suivi: {}, boissons: {}, reception: null };
+  return { schema: SCHEMA, exemple: false, consignes: {}, medicaments: [], prises: {}, poids: [], rendezVous: [], suivi: {}, boissons: {}, reception: null, fichesRecues: [] };
 }
 
 const texte = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -288,8 +288,18 @@ export function recevoirConsignes(etat, colis, maintenant) {
     else if (type === 'arret') e = arreterMedicament(e, actuel.id, colis.date);
   }
   const medicaments = lignes.filter((l) => l.type !== 'inchange' && l.type !== 'arret-introuvable').map((l) => ({ nom: l.actuel?.nom ?? l.recu.nom, type: l.type }));
+  // La fiche reçue est gardée telle quelle, avec ce qu'elle a changé, pour pouvoir la relire plus tard (version 14).
+  const fiche = {
+    id: nouvelId('fiche', maintenant), auteur: colis.auteur, date: colis.date, reevaluerLe: colis.reevaluerLe, recuLe: maintenant,
+    consignes: colis.consignes.map(({ id, valeur }) => ({ id, valeur })),
+    medicaments: lignes.map(({ type, recu, actuel }) => ({ ...recu, moments: { ...recu.moments }, type, avant: type === 'change' ? { dose: actuel.dose, moments: { ...actuel.moments } } : null })),
+  };
+  e = { ...e, fichesRecues: [...(e.fichesRecues ?? []), fiche] };
   return { ...e, reception: { auteur: colis.auteur, date: colis.date, recuLe: maintenant, ids: colis.consignes.map((c) => c.id), medicaments, vu: false } };
 }
+
+/** Les fiches reçues, de la plus récente à la plus ancienne. */
+export const fichesRecues = (etat) => [...(etat.fichesRecues ?? [])].reverse();
 
 /** Le patient a vu le message « consignes mises à jour ». */
 export const marquerReceptionVue = (etat) => (etat.reception ? { ...etat, reception: { ...etat.reception, vu: true } } : etat);
@@ -367,6 +377,23 @@ export function valider(donnees) {
       medicaments: Array.isArray(r.medicaments) ? r.medicaments.filter(estObjet).map((x) => ({ nom: texte(x.nom), type: texte(x.type) })) : [],
       vu: Boolean(r.vu),
     };
+  }
+
+  // Absent des carnets enregistrés avant la version 14 : vide dans ce cas.
+  if (donnees.fichesRecues !== undefined) {
+    if (!Array.isArray(donnees.fichesRecues)) throw new Error('Fiches reçues illisibles.');
+    etat.fichesRecues = donnees.fichesRecues.map((f) => {
+      if (!estObjet(f) || !texte(f.id) || !Array.isArray(f.consignes) || !Array.isArray(f.medicaments)) throw new Error('Une fiche reçue est illisible.');
+      const moments = (m) => Object.fromEntries(MOMENTS.map((mo) => [mo.id, Boolean(m?.[mo.id])]));
+      return {
+        id: f.id, auteur: texte(f.auteur), date: dateOuVide(f.date), reevaluerLe: dateOuVide(f.reevaluerLe), recuLe: texte(f.recuLe),
+        consignes: f.consignes.filter((c) => estObjet(c) && CHAMPS.has(c.id) && texte(c.valeur)).map((c) => ({ id: c.id, valeur: texte(c.valeur) })),
+        medicaments: f.medicaments.filter(estObjet).map((m) => ({
+          nom: texte(m.nom), dose: texte(m.dose), moments: moments(m.moments), aQuoiCaSert: texte(m.aQuoiCaSert), arreter: Boolean(m.arreter), type: texte(m.type),
+          avant: estObjet(m.avant) ? { dose: texte(m.avant.dose), moments: moments(m.avant.moments) } : null,
+        })),
+      };
+    });
   }
 
   if (donnees.boissons !== undefined) {
