@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Icône du visualiseur : un cœur moitié rouge (sang riche en oxygène), moitié bleu (sang pauvre), sur le fond sombre de la scène.
+       Différente de celle du carnet de suivi, pour ne pas confondre les deux applications sur un téléphone. -->
+  <defs>
+    <linearGradient id="fond" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#232b38"/>
+      <stop offset="1" stop-color="#0d1015"/>
+    </linearGradient>
+    <clipPath id="coeur"><path d="M256 404s-136-82-136-180a78 78 0 0 1 136-48 78 78 0 0 1 136 48c0 98-136 180-136 180Z"/></clipPath>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#fond)"/>
+  <g clip-path="url(#coeur)">
+    <rect x="0" y="0" width="256" height="512" fill="#3f6fc4"/>
+    <rect x="256" y="0" width="256" height="512" fill="#d24a3c"/>
+  </g>
+  <path d="M256 404s-136-82-136-180a78 78 0 0 1 136-48 78 78 0 0 1 136 48c0 98-136 180-136 180Z" fill="none" stroke="#fff" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M256 176v228" stroke="#fff" stroke-width="8" stroke-opacity="0.55"/>
+</svg>

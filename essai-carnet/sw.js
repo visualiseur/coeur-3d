@@ -1,6 +1,6 @@
 // Mode hors ligne : les fichiers de l'application sont gardés sur l'appareil.
 // Changer VERSION à chaque mise en ligne, sinon les appareils gardent l'ancienne version.
-const VERSION = 'carnet-coeur-14';
+const VERSION = 'carnet-coeur-15';
 const FICHIERS = [
   './', './index.html', './soignant.html', './styles.css', './icone.svg', './manifest.webmanifest',
   './src/app.js', './src/store.js', './src/modele.js', './src/courbe.js', './src/dates.js', './src/photos.js', './src/alimentation.js', './src/sel-aliments.js', './src/transmission.js', './src/qr.js', './src/affichage.js', './src/soignant.js',
@@ -13,7 +13,8 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((noms) => Promise.all(noms.filter((n) => n !== VERSION).map((n) => caches.delete(n))))
+      // Seulement les anciens caches du carnet : le visualiseur 3D, sur la même adresse, a les siens (version 15).
+      .then((noms) => Promise.all(noms.filter((n) => n.startsWith('carnet-coeur-') && n !== VERSION).map((n) => caches.delete(n))))
       .then(() => self.clients.claim()),
   );
 });

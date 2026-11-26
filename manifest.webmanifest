@@ -1,0 +1,14 @@
+{
+  "name": "Le cœur et la circulation — modèle 3D",
+  "short_name": "Cœur 3D",
+  "description": "Modèle 3D schématique du cœur et de la circulation. Support d'explication, version non validée.",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#14181f",
+  "theme_color": "#14181f",
+  "icons": [
+    { "src": "./icone.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
