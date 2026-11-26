@@ -94,6 +94,8 @@ export function retirerPoids(etat, date) {
 
 // ---------- Médicaments ----------
 
+export const medicamentsEnCours = (etat) => etat.medicaments.filter((m) => !m.arreteLe);
+
 function lireMedicament(saisie) {
   const nom = texte(saisie.nom);
   if (!nom) throw new Error('Le nom du médicament est vide.');
@@ -103,15 +105,53 @@ function lireMedicament(saisie) {
 }
 
 export function ajouterMedicament(etat, saisie, maintenant) {
-  const medicament = { id: nouvelId('med', maintenant), ...lireMedicament(saisie), saisiLe: maintenant, arreteLe: '' };
+  const medicament = { id: nouvelId('med', maintenant), ...lireMedicament(saisie), saisiLe: maintenant, arreteLe: '', historique: [] };
   return { ...etat, medicaments: [...etat.medicaments, medicament] };
 }
 
+const versionDuMedicament = (m) => ({ nom: m.nom, dose: m.dose, moments: { ...m.moments }, aQuoiCaSert: m.aQuoiCaSert, ecritPar: m.ecritPar, saisiLe: m.saisiLe });
+const memeContenu = (a, b) => JSON.stringify([a.nom, a.dose, a.moments, a.aQuoiCaSert, a.ecritPar]) === JSON.stringify([b.nom, b.dose, b.moments, b.aQuoiCaSert, b.ecritPar]);
+
+/** Modifie un médicament. Comme pour les consignes, l'ancienne version est gardée dans son historique. */
 export function modifierMedicament(etat, id, saisie, maintenant) {
+  const nouveau = lireMedicament(saisie);
   return {
     ...etat,
-    medicaments: etat.medicaments.map((m) => (m.id === id ? { ...m, ...lireMedicament(saisie), saisiLe: maintenant } : m)),
+    medicaments: etat.medicaments.map((m) => {
+      if (m.id !== id || memeContenu(m, nouveau)) return m;
+      return { ...m, ...nouveau, saisiLe: maintenant, historique: [...(m.historique ?? []), versionDuMedicament(m)] };
+    }),
   };
+}
+
+/** La version d'avant la dernière modification, ou null. */
+export const versionPrecedente = (m) => (m.historique?.length ? m.historique[m.historique.length - 1] : null);
+
+/** Pour comparer deux noms écrits différemment : « Furosémide  40 » et « furosemide 40 » sont le même. */
+export const nomCompare = (nom) => texte(nom).toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/\s+/g, ' ');
+const doseComparee = (dose) => texte(dose).toLowerCase().replace(/\s+/g, '').replace(',', '.');
+
+/**
+ * Ce que des médicaments transmis par un soignant changeraient dans le carnet, sans rien changer.
+ * Un médicament est reconnu par son nom, écrit pareil (majuscules, accents et espaces ignorés) ; rien n'est deviné :
+ * un même produit sous un autre nom (marque et générique) apparaît comme nouveau.
+ * Renvoie { lignes: [{ type, recu, actuel }], restent: [médicaments du carnet non cités] }.
+ * type : 'nouveau', 'change', 'inchange', 'arret', 'arret-introuvable'.
+ */
+export function comparerMedicaments(etat, recus) {
+  const enCours = medicamentsEnCours(etat);
+  const cites = new Set();
+  const lignes = recus.map((recu) => {
+    const actuel = enCours.find((m) => nomCompare(m.nom) === nomCompare(recu.nom)) ?? null;
+    if (actuel) cites.add(actuel.id);
+    if (recu.arreter) return { type: actuel ? 'arret' : 'arret-introuvable', recu, actuel };
+    if (!actuel) return { type: 'nouveau', recu, actuel };
+    const change = doseComparee(recu.dose) !== doseComparee(actuel.dose)
+      || JSON.stringify(recu.moments) !== JSON.stringify(actuel.moments)
+      || (recu.aQuoiCaSert && recu.aQuoiCaSert !== actuel.aQuoiCaSert);
+    return { type: change ? 'change' : 'inchange', recu, actuel };
+  });
+  return { lignes, restent: enCours.filter((m) => !cites.has(m.id)) };
 }
 
 /** Un médicament arrêté sort de la liste du jour, mais ses prises passées restent. */
@@ -119,7 +159,6 @@ export function arreterMedicament(etat, id, date) {
   return { ...etat, medicaments: etat.medicaments.map((m) => (m.id === id ? { ...m, arreteLe: date } : m)) };
 }
 
-export const medicamentsEnCours = (etat) => etat.medicaments.filter((m) => !m.arreteLe);
 
 /** Coche ou décoche une prise. */
 export function basculerPrise(etat, date, idMedicament, moment, maintenant) {
@@ -240,7 +279,16 @@ export function recevoirConsignes(etat, colis, maintenant) {
   for (const { id, valeur } of colis.consignes) {
     e = ecrireConsigne(e, id, { valeur, auteur: colis.auteur, date: colis.date, reevaluerLe: colis.reevaluerLe }, maintenant);
   }
-  return { ...e, reception: { auteur: colis.auteur, date: colis.date, recuLe: maintenant, ids: colis.consignes.map((c) => c.id), vu: false } };
+  // Médicaments : la comparaison est faite sur le carnet tel qu'il est au moment où le patient accepte.
+  const { lignes } = comparerMedicaments(e, colis.medicaments ?? []);
+  for (const { type, recu, actuel } of lignes) {
+    const saisie = { ...recu, ecritPar: colis.auteur };
+    if (type === 'nouveau') e = ajouterMedicament(e, saisie, maintenant);
+    else if (type === 'change') e = modifierMedicament(e, actuel.id, { ...saisie, nom: actuel.nom, aQuoiCaSert: recu.aQuoiCaSert || actuel.aQuoiCaSert }, maintenant);
+    else if (type === 'arret') e = arreterMedicament(e, actuel.id, colis.date);
+  }
+  const medicaments = lignes.filter((l) => l.type !== 'inchange' && l.type !== 'arret-introuvable').map((l) => ({ nom: l.actuel?.nom ?? l.recu.nom, type: l.type }));
+  return { ...e, reception: { auteur: colis.auteur, date: colis.date, recuLe: maintenant, ids: colis.consignes.map((c) => c.id), medicaments, vu: false } };
 }
 
 /** Le patient a vu le message « consignes mises à jour ». */
@@ -295,7 +343,8 @@ export function valider(donnees) {
   if (!Array.isArray(donnees.medicaments)) throw new Error('Médicaments illisibles.');
   etat.medicaments = donnees.medicaments.map((m) => {
     if (!estObjet(m) || !texte(m.id)) throw new Error('Un médicament est illisible.');
-    return { id: m.id, ...lireMedicament(m), saisiLe: texte(m.saisiLe), arreteLe: dateOuVide(m.arreteLe) };
+    const historique = Array.isArray(m.historique) ? m.historique.filter(estObjet).map((v) => ({ ...lireMedicament(v), saisiLe: texte(v.saisiLe) })) : [];
+    return { id: m.id, ...lireMedicament(m), saisiLe: texte(m.saisiLe), arreteLe: dateOuVide(m.arreteLe), historique };
   });
 
   if (!estObjet(donnees.prises)) throw new Error('Prises illisibles.');
@@ -314,7 +363,9 @@ export function valider(donnees) {
     const r = donnees.reception;
     etat.reception = {
       auteur: texte(r.auteur), date: dateOuVide(r.date), recuLe: texte(r.recuLe),
-      ids: Array.isArray(r.ids) ? r.ids.filter((id) => CHAMPS.has(id)) : [], vu: Boolean(r.vu),
+      ids: Array.isArray(r.ids) ? r.ids.filter((id) => CHAMPS.has(id)) : [],
+      medicaments: Array.isArray(r.medicaments) ? r.medicaments.filter(estObjet).map((x) => ({ nom: texte(x.nom), type: texte(x.type) })) : [],
+      vu: Boolean(r.vu),
     };
   }
 
