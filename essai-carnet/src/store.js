@@ -6,13 +6,13 @@
 //  - rien n'est calculé ni jugé : on range ce qui a été écrit.
 
 import { CHAMPS, MOMENTS } from './modele.js';
-import { estDateIso, ajouterJours } from './dates.js';
+import { estDateIso, ajouterJours, lundiDe } from './dates.js';
 
 export const SCHEMA = 1;
 export const FORMAT = 'carnet-coeur';
 
 export function etatVide() {
-  return { schema: SCHEMA, exemple: false, consignes: {}, medicaments: [], prises: {}, poids: [], rendezVous: [], suivi: {}, boissons: {}, reception: null, fichesRecues: [] };
+  return { schema: SCHEMA, exemple: false, consignes: {}, medicaments: [], prises: {}, poids: [], rendezVous: [], suivi: {}, boissons: {}, reception: null, fichesRecues: [], mesEaux: [], eauChoisie: '', seances: [] };
 }
 
 const texte = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -243,12 +243,19 @@ export function limiteBoissonsMl(etat) {
   return null;
 }
 
-/** Note une boisson (en mL) pour un jour. */
-export function boire(etat, date, ml, maintenant) {
+/**
+ * Note une boisson (en mL) pour un jour.
+ * eau (facultatif) : { code, nom, sodiumMgL } de l'eau bue, recopiée dans la boisson au moment où elle est notée :
+ * si la liste des eaux change plus tard, le sel des jours passés ne bouge pas.
+ */
+export function boire(etat, date, ml, maintenant, eau = null) {
   if (!estDateIso(date)) throw new Error('La date est invalide.');
   const quantite = Math.round(Number(String(ml ?? '').replace(',', '.').replace(/\s+/g, '')));
   if (!Number.isFinite(quantite) || quantite < 10 || quantite > 2000) throw new Error('Quantité illisible : entre 10 et 2000 mL (exemple : 200).');
-  const duJour = [...(etat.boissons[date] ?? []), { ml: quantite, saisiLe: maintenant }];
+  const boisson = { ml: quantite, saisiLe: maintenant };
+  const lue = eau ? lireEau(eau) : null;
+  if (lue) boisson.eau = lue;
+  const duJour = [...(etat.boissons[date] ?? []), boisson];
   return { ...etat, boissons: { ...etat.boissons, [date]: duJour } };
 }
 
@@ -267,6 +274,107 @@ export function viderBoissons(etat, date) {
 
 export const boissonsDuJour = (etat, date) => etat.boissons[date] ?? [];
 export const totalBuMl = (etat, date) => boissonsDuJour(etat, date).reduce((somme, b) => somme + b.ml, 0);
+
+// ---------- Le sel des eaux ----------
+
+/** Sodium d'une étiquette d'eau, en mg par litre (« 1708 », « 11,6 »). null si ce n'est pas un nombre plausible. */
+export function lireSodiumMgL(saisie) {
+  const propre = String(saisie ?? '').toLowerCase().replace(/mg\s*\/\s*l|mg|par litre/g, ' ').replace(',', '.').replace(/\s+/g, '');
+  if (!/^\d+(\.\d+)?$/.test(propre)) return null;
+  const n = Number(propre);
+  return n > 5000 ? null : Math.round(n * 10) / 10;
+}
+
+function lireEau(eau) {
+  const sodiumMgL = lireSodiumMgL(eau?.sodiumMgL);
+  const nom = texte(eau?.nom);
+  if (sodiumMgL === null || !nom) return null;
+  return { code: texte(String(eau.code ?? '')), nom, sodiumMgL };
+}
+
+/** Sel (en g) apporté par un volume d'eau : sodium × 2,5, la règle de l'étiquetage. */
+export function selDeLEau(ml, sodiumMgL) {
+  if (!(ml > 0) || !(sodiumMgL >= 0)) return null;
+  return Math.round(ml * sodiumMgL * 2.5 / 1000) / 1000;
+}
+
+/** Le sel d'une boisson notée, ou null si on n'a pas dit quelle eau c'était. */
+export const selDeLaBoisson = (b) => (b.eau ? selDeLEau(b.ml, b.eau.sodiumMgL) : null);
+
+/** Le sel apporté par les eaux notées un jour. Les autres boissons ne comptent pas : le carnet n'en sait rien. */
+export function selDesEauxDuJour(etat, date) {
+  const g = boissonsDuJour(etat, date).reduce((somme, b) => somme + (selDeLaBoisson(b) ?? 0), 0);
+  return Math.round(g * 1000) / 1000;
+}
+
+/** Une eau recopiée de l'étiquette par la personne (une marque absente de la liste Ciqual). */
+export function ajouterMonEau(etat, { nom, sodium }, maintenant) {
+  const n = texte(nom);
+  if (!n) throw new Error('Donnez le nom de l’eau.');
+  const sodiumMgL = lireSodiumMgL(sodium);
+  if (sodiumMgL === null) throw new Error('Sodium illisible : recopiez le nombre de l’étiquette, en mg par litre (exemple : 11,6).');
+  const eau = { code: nouvelId('eau', maintenant), nom: n, sodiumMgL, saisiLe: maintenant };
+  return { ...etat, mesEaux: [...(etat.mesEaux ?? []), eau], eauChoisie: eau.code };
+}
+
+export function retirerMonEau(etat, code) {
+  return { ...etat, mesEaux: (etat.mesEaux ?? []).filter((e) => e.code !== code), eauChoisie: etat.eauChoisie === code ? '' : etat.eauChoisie };
+}
+
+/** L'eau que l'on boit d'habitude : les verres notés ensuite sont comptés avec elle. '' : boisson sans sel compté. */
+export const choisirEau = (etat, code) => ({ ...etat, eauChoisie: texte(String(code ?? '')) });
+
+// ---------- Activité physique : mes séances ----------
+
+export const TYPES_SEANCE = ['Marche', 'Vélo', 'Séance au centre', 'Gymnastique douce', 'Autre'];
+export const RAISONS_PAS_PU = ['Fatigue', 'Essoufflement', 'Douleur', 'Météo', 'Pas le temps', 'Pas envie', 'Autre'];
+
+/**
+ * Note une séance faite, ou une séance qu'on n'a pas pu faire. Plusieurs par jour sont possibles.
+ * Rien n'est jugé : c'est un relevé, à montrer au médecin s'il le demande.
+ */
+export function noterSeance(etat, saisie, maintenant) {
+  if (!estDateIso(saisie.date)) throw new Error('La date est invalide.');
+  const fait = Boolean(saisie.fait);
+  const seance = { id: nouvelId('seance', maintenant), date: saisie.date, fait, saisiLe: maintenant, note: texte(saisie.note) };
+  if (fait) {
+    seance.type = texte(saisie.type);
+    const duree = texte(String(saisie.duree ?? ''));
+    if (duree) {
+      const n = Number(duree.replace(',', '.'));
+      if (!Number.isFinite(n) || n < 1 || n > 600) throw new Error('Durée illisible : un nombre de minutes, par exemple 30.');
+      seance.duree = Math.round(n);
+    }
+    seance.ressenti = texte(saisie.ressenti);
+  } else {
+    seance.raison = texte(saisie.raison);
+  }
+  const seances = [...(etat.seances ?? []), seance].sort((a, b) => a.date.localeCompare(b.date) || a.saisiLe.localeCompare(b.saisiLe));
+  return { ...etat, seances };
+}
+
+export function retirerSeance(etat, id) {
+  return { ...etat, seances: (etat.seances ?? []).filter((s) => s.id !== id) };
+}
+
+/** La semaine qui contient une date, du lundi au dimanche : [{ date, seances }]. */
+export function semaineDeSeances(etat, date) {
+  const lundi = lundiDe(date);
+  return Array.from({ length: 7 }, (_, i) => {
+    const jour = ajouterJours(lundi, i);
+    return { date: jour, seances: (etat.seances ?? []).filter((s) => s.date === jour) };
+  });
+}
+
+/** Nombre de séances faites dans la semaine d'une date. */
+export const seancesFaitesLaSemaine = (etat, date) => semaineDeSeances(etat, date).reduce((n, j) => n + j.seances.filter((s) => s.fait).length, 0);
+
+/** Le nombre de séances par semaine écrit sur la fiche, s'il est lisible (« 3 », « 3 fois »). Sinon null. */
+export function seancesParSemaineEcrites(etat) {
+  const v = consigneCourante(etat, 'frequence_semaine');
+  const m = v && /^\s*(\d{1,2})\s*(fois|séances?|seances?|x|par semaine|\/\s*semaine)?\s*$/i.exec(v.valeur);
+  return m ? Number(m[1]) : null;
+}
 
 // ---------- Consignes reçues d'un soignant ----------
 
@@ -400,8 +508,32 @@ export function valider(donnees) {
     if (!estObjet(donnees.boissons)) throw new Error('Boissons illisibles.');
     for (const [date, duJour] of Object.entries(donnees.boissons)) {
       if (!Array.isArray(duJour)) throw new Error('Une journée de boissons est illisible.');
-      for (const b of duJour) etat = boire(etat, date, b?.ml, texte(b?.saisiLe));
+      for (const b of duJour) etat = boire(etat, date, b?.ml, texte(b?.saisiLe), b?.eau ?? null);
     }
+  }
+
+  // Absents des carnets enregistrés avant la version 16 : vides dans ce cas.
+  if (donnees.mesEaux !== undefined) {
+    if (!Array.isArray(donnees.mesEaux)) throw new Error('Eaux illisibles.');
+    etat.mesEaux = donnees.mesEaux.map((e) => {
+      const lue = lireEau(e);
+      if (!lue || !lue.code) throw new Error('Une eau est illisible.');
+      return { ...lue, saisiLe: texte(e.saisiLe) };
+    });
+  }
+  etat.eauChoisie = texte(String(donnees.eauChoisie ?? ''));
+  if (donnees.seances !== undefined) {
+    if (!Array.isArray(donnees.seances)) throw new Error('Séances illisibles.');
+    etat.seances = donnees.seances.map((s) => {
+      if (!estObjet(s) || !texte(s.id) || !estDateIso(s.date)) throw new Error('Une séance est illisible.');
+      const lue = { id: s.id, date: s.date, fait: Boolean(s.fait), saisiLe: texte(s.saisiLe), note: texte(s.note) };
+      if (lue.fait) {
+        lue.type = texte(s.type);
+        if (Number.isInteger(s.duree) && s.duree >= 1 && s.duree <= 600) lue.duree = s.duree;
+        lue.ressenti = texte(s.ressenti);
+      } else lue.raison = texte(s.raison);
+      return lue;
+    }).sort((a, b) => a.date.localeCompare(b.date) || a.saisiLe.localeCompare(b.saisiLe));
   }
 
   // Absent des carnets enregistrés avant l'ajout du volet Alimentation : vide dans ce cas.
@@ -476,7 +608,9 @@ export function etatExemple(aujourdhui) {
 
   e = basculerPrise(e, aujourdhui, e.medicaments[0].id, 'matin', quand);
   e = boire(e, aujourdhui, 250, quand);
-  e = boire(e, aujourdhui, 200, quand);
+  e = boire(e, aujourdhui, 200, quand, { code: '76049', nom: 'St-Yorre, gazeuse', sodiumMgL: 1710 });
+  e = noterSeance(e, { date: ajouterJours(aujourdhui, -3), fait: true, type: 'Marche', duree: '30' }, quand);
+  e = noterSeance(e, { date: ajouterJours(aujourdhui, -1), fait: false, raison: 'Fatigue' }, quand);
   e = ajouterRendezVous(e, { date: ajouterJours(aujourdhui, 12), heure: '10:30', avec: 'Cardiologue (exemple)', lieu: 'Consultation' }, quand);
   return e;
 }

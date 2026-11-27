@@ -379,9 +379,10 @@ input:focus, textarea:focus { outline: none; border-color: var(--primaire); box-
 .portions button { border: 1.5px solid var(--trait); background: #fff; border-radius: 999px; padding: 8px 12px; font-weight: 650; font-size: 0.9rem; }
 [hidden] { display: none !important; }
 
-/* ---------- Accueil : les trois priorités ---------- */
+/* ---------- Accueil : les quatre priorités (deux par ligne sur téléphone) ---------- */
 
-.tuiles-accueil { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.tuiles-accueil { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+@media (min-width: 620px) { .tuiles-accueil { grid-template-columns: repeat(4, 1fr); } }
 .tuile-accueil {
   border: 0; border-radius: var(--rayon); background: var(--carte); box-shadow: var(--ombre); padding: 14px 8px 12px;
   display: grid; justify-items: center; gap: 4px; text-align: center; min-height: 138px; align-content: start;
@@ -390,6 +391,7 @@ input:focus, textarea:focus { outline: none; border-color: var(--primaire); box-
 .tuile-accueil.primaire { border-top-color: var(--primaire); }
 .tuile-accueil.ambre { border-top-color: var(--ambre); }
 .tuile-accueil.bleu { border-top-color: var(--bleu); }
+.tuile-accueil.vert { border-top-color: var(--vert); }
 .tuile-accueil .pastille { width: 46px; height: 46px; border-radius: 15px; margin-bottom: 2px; }
 .tuile-accueil b { font-size: 0.95rem; letter-spacing: -0.01em; }
 .tuile-accueil .val { font-size: 1rem; font-weight: 750; letter-spacing: -0.02em; line-height: 1.15; }
@@ -449,3 +451,49 @@ a.bouton { text-decoration: none; box-sizing: border-box; }
 .theme-soignant[open] > summary { margin-bottom: 14px; }
 .theme-soignant[open] > summary .chevron { transform: rotate(90deg); }
 .theme-soignant > summary .compte { margin-left: auto; }
+
+.pastille.neutre { background: #f1ebe2; color: var(--encre-douce); }
+
+/* ---------- Le sel des eaux (version 16) ---------- */
+
+.choix-eau { display: grid; gap: 6px; margin-bottom: 12px; padding: 12px; border-radius: 16px; background: var(--bleu-clair); }
+.choix-eau select { width: 100%; }
+.choix-eau .lien { justify-self: start; padding: 4px 0; background: none; border: 0; color: var(--bleu); font-weight: 650; font-size: 0.92rem; text-decoration: underline; cursor: pointer; }
+.sel-eaux { margin-top: 12px; padding: 10px 12px; border-radius: 14px; background: var(--ambre-clair); color: var(--encre); font-size: 0.95rem; }
+[data-liste="eaux"] .famille[open] > summary { background: var(--bleu-clair); }
+
+/* ---------- Mes séances (version 16) ---------- */
+
+.deux-gros { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.gros-choix {
+  border: 0; border-radius: var(--rayon); box-shadow: var(--ombre); padding: 18px 10px; min-height: 108px;
+  display: grid; justify-items: center; align-content: center; gap: 8px; text-align: center; font-size: 1rem; line-height: 1.2;
+}
+.gros-choix.vert { background: var(--vert); color: #fff; }
+.gros-choix.neutre { background: var(--carte); color: var(--encre); border-top: 5px solid #d8cfc2; }
+.gros-choix:active { transform: translateY(1px); }
+
+.titre-champ { font-size: 0.9rem; font-weight: 650; color: var(--encre-douce); }
+.choix-unique { margin-top: 6px; }
+.choix-unique label:has(input:checked) { border-color: var(--vert); background: var(--vert-clair); }
+.choix-unique input { accent-color: var(--vert); }
+
+.semaine-bloc + .semaine-bloc { margin-top: 14px; }
+.semaine-titre { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--encre-douce); margin-bottom: 6px; }
+.semaine { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.jour-semaine { display: grid; justify-items: center; gap: 4px; }
+.jour-semaine .lettre { font-size: 0.78rem; font-weight: 700; color: var(--encre-pale); }
+.jour-semaine.aujourdhui .lettre { color: var(--vert); }
+.jour-semaine.futur .rond { opacity: 0.45; }
+.rond {
+  position: relative; width: 36px; height: 36px; border-radius: 50%; display: inline-grid; place-items: center; font-weight: 700;
+  border: 2px dashed #d8cfc2; color: var(--encre-pale);
+}
+.rond.fait { background: var(--vert); border: 2px solid var(--vert); color: #fff; }
+.rond.pas { background: #ece6dc; border: 2px solid #ece6dc; color: var(--encre-douce); }
+.rond i { position: absolute; top: -6px; right: -6px; font-style: normal; font-size: 0.7rem; background: #fff; color: var(--vert); border: 1.5px solid var(--vert); border-radius: 999px; padding: 0 5px; line-height: 1.4; }
+.jour-semaine.aujourdhui .rond { box-shadow: 0 0 0 3px var(--vert-clair); }
+.fait-semaine { margin-top: 12px; font-weight: 650; }
+.legende-semaine { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; font-size: 0.8rem; color: var(--encre-douce); }
+.legende-semaine span { display: inline-flex; align-items: center; gap: 6px; }
+.legende-semaine .rond { width: 14px; height: 14px; border-width: 1.5px; }

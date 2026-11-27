@@ -7,9 +7,10 @@ import { geometrie } from './courbe.js';
 import * as depot from './photos.js';
 import { GROUPES, POUR_LE_GOUT, SOURCES, CHAMPS_DE_LA_FICHE, RELU_LE } from './alimentation.js';
 import { FAMILLES_SEL, VERSION_CIQUAL } from './sel-aliments.js';
+import { EAUX, VERSION_CIQUAL_EAUX } from './sel-eaux.js';
 import { deballerTout, contientDesConsignes } from './transmission.js';
 import { VERSION_APPLI, ech, ic } from './affichage.js';
-import { versIso, dateLongue, dateCourte, dateTresCourte } from './dates.js';
+import { versIso, dateLongue, dateCourte, dateTresCourte, ajouterJours } from './dates.js';
 
 const CLE = 'carnet-coeur';
 const VUES = [
@@ -17,6 +18,7 @@ const VUES = [
   { id: 'poids', libelle: 'Poids', icone: 'balance' },
   { id: 'alimentation', libelle: 'Alimentation', icone: 'alimentation' },
   { id: 'liquides', libelle: 'Liquides', icone: 'goutte' },
+  { id: 'seances', libelle: 'Séances', icone: 'activite' },
   { id: 'medicaments', libelle: 'Médicaments', icone: 'medicaments' },
 ];
 // « Ma fiche » n'est plus dans la barre du bas : on y va depuis l'accueil.
@@ -37,7 +39,7 @@ function charger() {
 
 let etat = charger();
 let photos = new Map(); // identifiant du médicament → image, chargées au démarrage
-const ui = { vue: vueDepuisAdresse(), feuille: null, periode: 30, erreur: '', recherche: '', famillesOuvertes: new Set() };
+const ui = { vue: vueDepuisAdresse(), feuille: null, periode: 30, erreur: '', recherche: '', rechercheEau: '', famillesOuvertes: new Set() };
 
 function vueDepuisAdresse() {
   const id = location.hash.slice(1);
@@ -190,7 +192,7 @@ function vueAujourdhui() {
   return `${bandeau}${bandeauReception()}${bandeauExemple()}${tuilesAccueil()}${cartePoids}${carteMeds}${carteRdv}${carteRevoir}${lienFiche}${lienSoignant}${mention()}`;
 }
 
-/** Les trois priorités, toujours en haut de l'accueil : poids, alimentation, liquides. */
+/** Les priorités, toujours en haut de l'accueil : poids, alimentation, liquides, et les séances (version 16). */
 function tuilesAccueil() {
   const jour = aujourdhui();
   const pesee = etat.poids.find((p) => p.date === jour);
@@ -205,7 +207,14 @@ function tuilesAccueil() {
     ${tuile('poids', 'primaire', 'balance', 'Poids', pesee ? `${nombre(pesee.kg)} kg` : 'À noter', pesee ? 'noté aujourd’hui' : derniere ? `dernier : ${nombre(derniere.kg)} kg` : 'aucune pesée')}
     ${tuile('alimentation', 'ambre', 'alimentation', 'Alimentation', sel === null ? 'À régler' : `${sel.toLocaleString('fr-FR')} g de sel`, sel === null ? 'ma limite de sel' : 'ma limite par jour')}
     ${tuile('liquides', 'bleu', 'goutte', 'Liquides', reste === null ? 'À régler' : reste >= 0 ? enMl(reste) : `+ ${enMl(-reste)}`, reste === null ? 'ma limite de liquide' : reste >= 0 ? 'restent aujourd’hui' : 'au-delà de la limite')}
+    ${tuile('seances', 'vert', 'activite', 'Séances', valeurTuileSeances(), 'faites cette semaine')}
   </div>`;
+}
+
+function valeurTuileSeances() {
+  const faites = store.seancesFaitesLaSemaine(etat, aujourdhui());
+  const ecrites = store.seancesParSemaineEcrites(etat);
+  return ecrites === null ? String(faites) : `${faites} sur ${ecrites}`;
 }
 
 /** Saisie d'une limite sur place, sans passer par la fiche. La valeur est rangée dans la fiche quand même. */
@@ -366,6 +375,53 @@ const RECIPIENTS = [
 ];
 
 const enMl = (n) => `${n.toLocaleString('fr-FR')} mL`;
+
+/** Les eaux que l'on peut choisir : celles recopiées par la personne, puis la liste Ciqual. */
+const toutesLesEaux = () => [...(etat.mesEaux ?? []).map((e) => ({ ...e, perso: true })), ...EAUX];
+const eauDuCode = (code) => (code ? toutesLesEaux().find((e) => String(e.code) === String(code)) ?? null : null);
+const eauChoisie = () => eauDuCode(etat.eauChoisie);
+/** Ce qui est recopié dans la boisson notée. */
+const eauPourBoire = () => { const e = eauChoisie(); return e ? { code: String(e.code), nom: e.nom, sodiumMgL: e.sodiumMgL } : null; };
+
+/** « 0,43 g », « moins de 0,01 g ». */
+function enGrammesDeSel(g) {
+  if (g === null) return '…';
+  if (g > 0 && g < 0.01) return 'moins de 0,01 g';
+  return `${g.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} g`;
+}
+
+/** Le menu « Ce que je bois » : une autre boisson (sel non compté), mes eaux, les eaux courantes, puis les marques de A à Z. */
+function choixEau() {
+  const choisie = eauChoisie();
+  const option = (e) => `<option value="${ech(String(e.code))}" ${String(e.code) === etat.eauChoisie ? 'selected' : ''}>${ech(e.nom)} · ${enGrammesDeSel(store.selDeLEau(1000, e.sodiumMgL))} de sel par litre</option>`;
+  const perso = toutesLesEaux().filter((e) => e.perso);
+  const marques = EAUX.filter((e) => !e.courante).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+  return `<div class="choix-eau">
+      <label class="champ">Ce que je bois
+        <select data-choix-eau aria-label="Ce que je bois">
+          <option value="" ${choisie ? '' : 'selected'}>Une autre boisson (sel non compté)</option>
+          ${perso.length ? `<optgroup label="Mes eaux">${perso.map(option).join('')}</optgroup>` : ''}
+          <optgroup label="Eaux courantes">${EAUX.filter((e) => e.courante).map(option).join('')}</optgroup>
+          <optgroup label="Eaux de marque, de A à Z">${marques.map(option).join('')}</optgroup>
+        </select>
+      </label>
+      ${choisie ? `<p class="discret">Un verre de 200 mL de cette eau : <b>${enGrammesDeSel(store.selDeLEau(200, choisie.sodiumMgL))} de sel</b>. Les verres notés à partir de maintenant comptent ce sel.</p>` : '<p class="discret">Choisissez votre eau pour voir le sel qu’elle apporte. Le carnet ne compte pas le sel des autres boissons (café, soupe…).</p>'}
+      <button class="lien" data-action="ouvrir:mon-eau">Mon eau n’est pas dans la liste</button>
+    </div>`;
+}
+
+/** Le sel apporté par les eaux notées aujourd'hui, et ce qu'il représente de la limite de sel écrite. */
+function ligneSelDesEaux(jour) {
+  const boissons = store.boissonsDuJour(etat, jour);
+  if (!boissons.some((b) => b.eau)) return '';
+  const g = store.selDesEauxDuJour(etat, jour);
+  const limite = store.limiteSelG(etat);
+  const part = store.partDeLaLimite(g, limite);
+  return `<div class="sel-eaux">
+      <div>Sel apporté par les eaux notées aujourd’hui : <b>${enGrammesDeSel(g)}</b></div>
+      ${part === null ? '' : `<div class="discret">soit ${part} % de votre limite de sel écrite (${limite.toLocaleString('fr-FR')} g par jour, aliments compris)</div>`}
+    </div>`;
+}
 const enLitres = (ml) => `${(ml / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} L`;
 
 /** La bouteille : pleine de la limite écrite sur la fiche, elle se vide de ce qui a été bu. */
@@ -399,14 +455,18 @@ function carteBoissons() {
   const ecrit = store.consigneCourante(etat, 'boissons_limite');
   const precision = parole('boissons');
 
-  const verres = `<div class="recipients">${RECIPIENTS.map((r) => `<button class="recipient" data-action="boire:${r.ml}"><b>${r.libelle}</b><span>${r.ml} mL</span></button>`).join('')}</div>
+  const verres = `${choixEau()}<div class="recipients">${RECIPIENTS.map((r) => `<button class="recipient" data-action="boire:${r.ml}"><b>${r.libelle}</b><span>${r.ml} mL</span></button>`).join('')}</div>
     <form class="saisie-rapide" data-form="boisson" style="margin-top:10px">
       <div class="champ-unite"><input type="text" name="ml" inputmode="numeric" placeholder="Autre quantité" aria-label="Autre quantité en millilitres" autocomplete="off" required><span>mL</span></div>
       <button class="bouton secondaire" type="submit">Ajouter</button>
     </form>
     ${ui.erreurBoisson ? `<p class="erreur" style="margin-top:10px">${ech(ui.erreurBoisson)}</p>` : ''}`;
 
-  const journal = boissons.length ? `<div class="journal-boissons">${boissons.map((b, i) => `<button data-action="retirer-boisson:${i}" aria-label="Retirer ${b.ml} mL"><span>${b.ml} mL</span>${ic('croix', 14)}</button>`).join('')}</div>
+  const journal = boissons.length ? `<div class="journal-boissons">${boissons.map((b, i) => {
+      const sel = store.selDeLaBoisson(b);
+      return `<button data-action="retirer-boisson:${i}" aria-label="Retirer ${b.ml} mL${b.eau ? ` de ${ech(b.eau.nom)}` : ''}"><span>${b.ml} mL${sel ? ` · ${enGrammesDeSel(sel)} de sel` : ''}</span>${ic('croix', 14)}</button>`;
+    }).join('')}</div>
+    ${ligneSelDesEaux(jour)}
     <p class="discret" style="margin-top:6px">Touchez une boisson pour la retirer si elle a été notée par erreur.</p>
     <button class="bouton neutre large" style="margin-top:12px" data-action="vider-boissons">Remettre la bouteille à plein</button>` : '';
 
@@ -488,6 +548,76 @@ function ligneConsigne(id) {
     <span class="libelle">${ech(c.libelle)}</span><br>
     ${v ? `<span class="valeur">${avecUnite(c, v.valeur)}</span>${v.auteur || v.date ? `<br><span class="meta">${origine(v)}</span>` : ''}` : '<span class="vide">Non renseigné</span>'}
   </span><span class="chevron">${ic('chevron', 18)}</span></button></li>`;
+}
+
+// ---------- Écran : Mes séances (version 16) ----------
+
+const JOURS_COURTS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+
+/** Une semaine en 7 ronds : vert = séance faite, gris = pas pu, vide = rien de noté. */
+function rangeeSemaine(date, { titre }) {
+  const semaine = store.semaineDeSeances(etat, date);
+  const jour = aujourdhui();
+  const faites = semaine.reduce((n, j) => n + j.seances.filter((s) => s.fait).length, 0);
+  const ronds = semaine.map((j, i) => {
+    const nbFaites = j.seances.filter((s) => s.fait).length;
+    const etatRond = nbFaites ? 'fait' : j.seances.length ? 'pas' : 'vide';
+    const dit = nbFaites ? `${nbFaites} séance${nbFaites > 1 ? 's' : ''} faite${nbFaites > 1 ? 's' : ''}` : j.seances.length ? 'pas pu' : 'rien de noté';
+    return `<div class="jour-semaine${j.date === jour ? ' aujourdhui' : ''}${j.date > jour ? ' futur' : ''}"><span class="lettre">${JOURS_COURTS[i]}</span>
+      <span class="rond ${etatRond}" title="${dateCourte(j.date)} : ${dit}" aria-label="${ech(dateLongue(j.date))} : ${dit}">${nbFaites ? ic('coche', 16) : j.seances.length ? '–' : ''}${nbFaites > 1 ? `<i>${nbFaites}</i>` : ''}</span></div>`;
+  }).join('');
+  return `<div class="semaine-bloc"><div class="semaine-titre"><span>${titre}</span><b>${faites} faite${faites > 1 ? 's' : ''}</b></div><div class="semaine">${ronds}</div></div>`;
+}
+
+function descriptionSeance(s) {
+  if (s.fait) return [s.type || 'Séance', s.duree ? `${s.duree} min` : '', s.ressenti ? `ressenti : ${s.ressenti}` : ''].filter(Boolean).join(' · ');
+  return `Pas pu${s.raison ? ` · ${s.raison.toLowerCase()}` : ''}`;
+}
+
+function vueSeances() {
+  const jour = aujourdhui();
+  const ecrites = store.seancesParSemaineEcrites(etat);
+  const faites = store.seancesFaitesLaSemaine(etat, jour);
+  const lundi = (n) => ajouterJours(jour, -7 * n);
+  const passees = [1, 2, 3].map((n) => rangeeSemaine(lundi(n), { titre: `Semaine du ${dateTresCourte(store.semaineDeSeances(etat, lundi(n))[0].date)}` })).join('');
+  const recentes = [...(etat.seances ?? [])].reverse().slice(0, 20);
+  const autresChamps = ['fc_cible_min', 'fc_cible_max', 'fc_ne_pas_depasser', 'ressenti_effort', 'activites_autorisees', 'activites_deconseillees']
+    .filter((id) => store.consigneCourante(etat, id)).map(ligneConsigne).join('');
+
+  return `<h1 class="titre-page">Mes séances</h1>
+    <p class="sous-titre">Noter les séances faites, et celles qu’on n’a pas pu faire. C’est un relevé pour vous et votre médecin : le carnet ne le juge pas.</p>
+    ${bandeauExemple()}
+    <div class="deux-gros">
+      <button class="gros-choix vert" data-action="ouvrir-seance:fait">${ic('coche', 26)}<b>J’ai fait une séance</b></button>
+      <button class="gros-choix neutre" data-action="ouvrir-seance:pas">${ic('croix', 26)}<b>Je n’ai pas pu</b></button>
+    </div>
+
+    <section class="carte">
+      <div class="carte-tete"><span class="pastille vert">${ic('calendrier')}</span><h2>Cette semaine</h2></div>
+      ${rangeeSemaine(jour, { titre: 'Du lundi au dimanche' })}
+      <p class="fait-semaine">${faites} séance${faites > 1 ? 's' : ''} faite${faites > 1 ? 's' : ''}${ecrites === null ? '' : ` · votre fiche dit : ${ecrites} par semaine`}</p>
+      <div class="legende-semaine"><span><i class="rond fait"></i>faite</span><span><i class="rond pas"></i>pas pu</span><span><i class="rond vide"></i>rien de noté</span></div>
+    </section>
+
+    <section class="carte">
+      <div class="carte-tete"><span class="pastille vert">${ic('activite')}</span><h2>Ce que dit ma fiche</h2></div>
+      <ul class="liste">${ligneConsigne('duree_seance')}${ligneConsigne('frequence_semaine')}${autresChamps}</ul>
+      <p class="discret" style="margin-top:8px">Ce sont les consignes écrites par vos soignants. Le carnet n’en fixe aucune.</p>
+    </section>
+
+    <section class="carte">
+      <div class="carte-tete"><span class="pastille primaire">${ic('horloge')}</span><h2>Les semaines d’avant</h2></div>
+      ${passees}
+    </section>
+
+    ${recentes.length ? `<section class="carte">
+      <div class="carte-tete"><span class="pastille neutre">${ic('fiche')}</span><h2>Mes dernières notes</h2></div>
+      <ul class="liste">${recentes.map((s) => `<li><div class="ligne">
+        <div class="corps"><span class="valeur">${ech(descriptionSeance(s))}</span><br><span class="libelle">${ech(dateLongue(s.date))}</span>${s.note ? `<br><span class="meta">${ech(s.note)}</span>` : ''}</div>
+        <button class="bouton-rond" data-action="retirer-seance:${s.id}" aria-label="Retirer la note du ${dateCourte(s.date)}">${ic('croix', 18)}</button>
+      </div></li>`).join('')}</ul>
+    </section>` : ''}
+    ${mention()}`;
 }
 
 // ---------- Écran : Ma fiche ----------
@@ -650,7 +780,7 @@ function carteSel() {
       </button></li>`).join('')}</ul>
     </details>`).join('');
 
-  return `<section class="carte">
+  return `<section class="carte" data-liste="aliments">
     <div class="carte-tete"><span class="pastille ambre">${ic('balance')}</span><h2>Le sel dans les aliments</h2></div>
     <p class="discret">${limite === null
       ? 'Ce que chaque aliment apporte en sel. Notez dans la fiche la limite écrite par votre médecin pour voir ce qu’une portion en représente.'
@@ -662,11 +792,39 @@ function carteSel() {
   </section>`;
 }
 
-/** Applique la recherche à la liste affichée, sans la redessiner (la saisie garderait mal le curseur). */
+/** Le sel dans les eaux, de la plus salée à la moins salée : pour un litre et pour un verre. */
+function carteEaux() {
+  const ligne = (e) => `<li class="aliment" data-nom="${ech(sansAccent(e.nom))}"><div class="ligne">
+      <span class="corps"><span class="valeur">${ech(e.nom)}</span>${e.origine ? ` <span class="meta">(${ech(e.origine)})</span>` : ''}<br>
+        <span class="meta">1 litre : ${enGrammesDeSel(store.selDeLEau(1000, e.sodiumMgL))} de sel · un verre de 200 mL : ${enGrammesDeSel(store.selDeLEau(200, e.sodiumMgL))}</span></span>
+      <span class="teneur"><b>${e.sodiumMgL.toLocaleString('fr-FR')}</b><small>mg de sodium par litre</small></span>
+    </div></li>`;
+  const famille = (id, titre, eaux) => `<details class="famille" data-famille="${id}" ${ui.famillesOuvertes.has(id) ? 'open' : ''}>
+      <summary><span>${titre}</span><span class="compte">${eaux.length}</span></summary>
+      <ul class="liste">${eaux.map(ligne).join('')}</ul>
+    </details>`;
+  const marques = EAUX.filter((e) => !e.courante);
+  return `<section class="carte" data-liste="eaux">
+    <div class="carte-tete"><span class="pastille bleu">${ic('goutte')}</span><h2>Le sel dans les eaux</h2></div>
+    <p class="discret">L’étiquette d’une eau donne le sodium, pas le sel. Le carnet a fait le calcul : sel = sodium × 2,5. Certaines eaux gazeuses en apportent beaucoup.</p>
+    <input type="text" class="recherche" data-recherche-eau placeholder="Chercher une eau" aria-label="Chercher une eau" autocomplete="off" value="${ech(ui.rechercheEau)}">
+    <p class="vide" data-aucun hidden style="margin-top:12px">Aucune eau de la liste ne correspond. Sur l’écran Liquides, « Mon eau n’est pas dans la liste » permet de recopier son étiquette.</p>
+    <div class="familles">${famille('eaux-courantes', 'Eaux courantes (moyennes)', EAUX.filter((e) => e.courante))}${famille('eaux-marques', 'Eaux de marque, de la plus salée à la moins salée', marques)}</div>
+    <p class="discret" style="margin-top:12px">Teneurs de la table ${ech(VERSION_CIQUAL_EAUX)} de l’Anses. La composition d’une eau peut avoir changé depuis : l’étiquette de votre bouteille fait foi. L’eau du robinet varie selon la commune.</p>
+  </section>`;
+}
+
+/** Applique une recherche à une liste affichée, sans la redessiner (la saisie garderait mal le curseur). */
 function filtrerAliments() {
-  const q = sansAccent(ui.recherche.trim());
+  filtrerListe(document.querySelector('[data-liste="aliments"]'), ui.recherche);
+  filtrerListe(document.querySelector('[data-liste="eaux"]'), ui.rechercheEau);
+}
+
+function filtrerListe(racine, recherche) {
+  if (!racine) return;
+  const q = sansAccent(recherche.trim());
   let total = 0;
-  for (const famille of document.querySelectorAll('.famille')) {
+  for (const famille of racine.querySelectorAll('.famille')) {
     let visibles = 0;
     for (const li of famille.querySelectorAll('.aliment')) {
       const montre = !q || li.dataset.nom.includes(q);
@@ -677,7 +835,7 @@ function filtrerAliments() {
     if (q) famille.open = visibles > 0; else famille.open = ui.famillesOuvertes.has(famille.dataset.famille);
     total += visibles;
   }
-  const aucun = document.querySelector('[data-aucun]');
+  const aucun = racine.querySelector('[data-aucun]');
   if (aucun) aucun.hidden = total > 0;
 }
 
@@ -729,6 +887,8 @@ function vueAlimentation() {
     ${carteLimiteSel()}
 
     ${carteSel()}
+
+    ${carteEaux()}
 
     <section class="carte">
       <div class="carte-tete"><span class="pastille primaire">${ic('fiche')}</span><h2>Ce que mes soignants ont ajouté</h2></div>
@@ -882,6 +1042,42 @@ function feuilleUrgence() {
     </div>`;
 }
 
+function feuilleMonEau() {
+  const perso = etat.mesEaux ?? [];
+  return `<div class="feuille-tete"><h2>Mon eau</h2><button class="bouton-rond" data-action="fermer" aria-label="Fermer">${ic('croix', 18)}</button></div>
+    <form data-form="mon-eau">
+      <p class="discret">Recopiez l’étiquette de la bouteille. Le sodium est dans le tableau de composition, en mg par litre (mg/L).</p>
+      <label class="champ">Nom de l’eau<input type="text" name="nom" placeholder="Nom écrit sur la bouteille" autocomplete="off" required></label>
+      <label class="champ">Sodium<small>Écrit « Sodium » ou « Na+ » sur l’étiquette.</small><span class="champ-unite"><input type="text" name="sodium" inputmode="decimal" placeholder="11,6" autocomplete="off" required><span>mg/L</span></span></label>
+      ${ui.erreur ? `<p class="erreur">${ech(ui.erreur)}</p>` : ''}
+      <button class="bouton large" type="submit">Enregistrer et boire cette eau</button>
+      <p class="discret">Le sel vaut le sodium multiplié par 2,5 : c’est la règle de l’étiquetage.</p>
+    </form>
+    ${perso.length ? `<div class="bloc" style="margin-top:18px"><h3 style="font-size:1rem">Mes eaux enregistrées</h3>
+      <ul class="liste">${perso.map((e) => `<li><div class="ligne"><div class="corps"><span class="valeur">${ech(e.nom)}</span><br><span class="meta">Sodium ${e.sodiumMgL.toLocaleString('fr-FR')} mg/L · ${enGrammesDeSel(store.selDeLEau(1000, e.sodiumMgL))} de sel par litre</span></div>
+        <button class="bouton-rond" data-action="retirer-mon-eau:${e.code}" aria-label="Retirer ${ech(e.nom)}">${ic('croix', 18)}</button></div></li>`).join('')}</ul></div>` : ''}`;
+}
+
+function feuilleSeance(arg) {
+  const fait = arg === 'fait';
+  const ressenti = store.consigneCourante(etat, 'ressenti_effort');
+  const puces = (nom, valeurs) => `<div class="coches choix-unique">${valeurs.map((v, i) => `<label><input type="radio" name="${nom}" value="${ech(v)}" ${i === 0 && fait ? 'checked' : ''}>${ech(v)}</label>`).join('')}</div>`;
+  return `<div class="feuille-tete"><h2>${fait ? 'J’ai fait une séance' : 'Je n’ai pas pu faire ma séance'}</h2><button class="bouton-rond" data-action="fermer" aria-label="Fermer">${ic('croix', 18)}</button></div>
+    <form data-form="seance" data-fait="${fait ? 'oui' : 'non'}">
+      <label class="champ">Date<input type="date" name="date" value="${aujourdhui()}" max="${aujourdhui()}" required></label>
+      ${fait ? `
+        <div class="champ"><span class="titre-champ">Quoi</span>${puces('type', store.TYPES_SEANCE)}</div>
+        <label class="champ">Durée<small>Facultatif.</small><span class="champ-unite"><input type="text" name="duree" inputmode="numeric" placeholder="30" autocomplete="off"><span>min</span></span></label>
+        <label class="champ">Comment je l’ai ressentie<small>${ressenti ? `Votre fiche dit : ${ech(ressenti.valeur)}` : 'Facultatif. Avec les mots de l’échelle utilisée par votre service, si vous en avez une.'}</small><input type="text" name="ressenti" autocomplete="off"></label>`
+      : `
+        <div class="champ"><span class="titre-champ">Pourquoi</span><small>Facultatif.</small>${puces('raison', store.RAISONS_PAS_PU)}</div>
+        <div class="bandeau priorite">${ic('alerte', 20)}<div class="corps">Une douleur dans la poitrine, un malaise, un essoufflement inhabituel : ne restez pas seul avec. <button type="button" data-action="ouvrir:urgence">Voir les numéros d’urgence</button></div></div>`}
+      <label class="champ">Une remarque<small>Facultatif. Par exemple pour en parler au médecin.</small><textarea name="note"></textarea></label>
+      ${ui.erreur ? `<p class="erreur">${ech(ui.erreur)}</p>` : ''}
+      <button class="bouton large" type="submit">Enregistrer</button>
+    </form>`;
+}
+
 function feuilleReglages() {
   return `<div class="feuille-tete"><h2>Sauvegarde</h2><button class="bouton-rond" data-action="fermer" aria-label="Fermer">${ic('croix', 18)}</button></div>
     <div class="bloc">
@@ -909,6 +1105,8 @@ function feuille() {
     : type === 'aliment' ? feuilleAliment(arg)
     : type === 'reception' ? feuilleReception(ui.feuille)
     : type === 'urgence' ? feuilleUrgence()
+    : type === 'mon-eau' ? feuilleMonEau()
+    : type === 'seance' ? feuilleSeance(arg)
     : feuilleReglages();
   return `<div class="voile" data-voile><div class="feuille" role="dialog" aria-modal="true">${contenu}</div></div>`;
 }
@@ -916,7 +1114,7 @@ function feuille() {
 // ---------- Assemblage ----------
 
 function rendre() {
-  const contenu = ui.vue === 'fiche' ? vueFiche() : ui.vue === 'poids' ? vuePoids() : ui.vue === 'medicaments' ? vueMedicaments() : ui.vue === 'alimentation' ? vueAlimentation() : ui.vue === 'liquides' ? vueLiquides() : ui.vue === 'soignant' ? vueSoignant() : vueAujourdhui();
+  const contenu = ui.vue === 'fiche' ? vueFiche() : ui.vue === 'poids' ? vuePoids() : ui.vue === 'medicaments' ? vueMedicaments() : ui.vue === 'alimentation' ? vueAlimentation() : ui.vue === 'liquides' ? vueLiquides() : ui.vue === 'seances' ? vueSeances() : ui.vue === 'soignant' ? vueSoignant() : vueAujourdhui();
   document.getElementById('app').innerHTML = `
     <header class="barre">
       ${ui.vue === 'aujourdhui'
@@ -993,7 +1191,10 @@ document.addEventListener('click', (evenement) => {
     navigator.clipboard.writeText(adressePageSoignant()).then(() => { cible.textContent = 'Adresse copiée'; }).catch(() => { document.querySelector('.lien-a-copier')?.select(); });
   }
   else if (action === 'partager-adresse-soignant') navigator.share({ title: 'Page soignant du carnet', url: adressePageSoignant() }).catch(() => {});
-  else if (action === 'boire') { ui.erreurBoisson = ''; tenter(() => store.boire(etat, jour, a, maintenant()), { fermer: false }); }
+  else if (action === 'boire') { ui.erreurBoisson = ''; tenter(() => store.boire(etat, jour, a, maintenant(), eauPourBoire()), { fermer: false }); }
+  else if (action === 'retirer-mon-eau') { if (confirm('Retirer cette eau de votre liste ? Les boissons déjà notées gardent leur sel.')) tenter(() => store.retirerMonEau(etat, a), { fermer: false }); }
+  else if (action === 'ouvrir-seance') { ui.feuille = { type: 'seance', arg: a }; ui.erreur = ''; rendre(); }
+  else if (action === 'retirer-seance') { if (confirm('Retirer cette note ?')) tenter(() => store.retirerSeance(etat, a), { fermer: false }); }
   else if (action === 'vider-boissons') { if (confirm('Remettre la bouteille à plein ? Les boissons notées aujourd’hui seront effacées.')) tenter(() => store.viderBoissons(etat, jour), { fermer: false }); }
   else if (action === 'retirer-boisson') tenter(() => store.retirerBoisson(etat, jour, a), { fermer: false });
   else if (action === 'portion') {
@@ -1043,8 +1244,13 @@ document.addEventListener('submit', (evenement) => {
   }
   else if (type === 'boisson') {
     // Erreur affichée dans la carte de la bouteille, pas à côté du poids.
-    try { enregistrer(store.boire(etat, aujourdhui(), s.ml, maintenant())); ui.erreurBoisson = ''; } catch (e) { ui.erreurBoisson = e.message; }
+    try { enregistrer(store.boire(etat, aujourdhui(), s.ml, maintenant(), eauPourBoire())); ui.erreurBoisson = ''; } catch (e) { ui.erreurBoisson = e.message; }
     rendre();
+  }
+  else if (type === 'mon-eau') tenter(() => store.ajouterMonEau(etat, s, maintenant()));
+  else if (type === 'seance') {
+    const fait = formulaire.dataset.fait === 'oui';
+    tenter(() => store.noterSeance(etat, { ...s, fait }, maintenant()));
   }
   else if (type === 'poids-rapide') tenter(() => store.noterPoids(etat, { date: aujourdhui(), kg: s.kg }, maintenant()));
   else if (type === 'poids') tenter(() => store.noterPoids(etat, s, maintenant()));
@@ -1078,6 +1284,7 @@ function remplacerPhotos(objet) {
 }
 
 document.addEventListener('change', async (evenement) => {
+  if (evenement.target.matches('[data-choix-eau]')) { tenter(() => store.choisirEau(etat, evenement.target.value), { fermer: false }); return; }
   if (evenement.target.id === 'fichier-photo') {
     const fichier = evenement.target.files[0];
     if (!fichier || !ui.feuille) return;
@@ -1113,12 +1320,13 @@ document.addEventListener('change', async (evenement) => {
 // Une famille d'aliments ouverte le reste quand l'écran est redessiné.
 document.addEventListener('toggle', (evenement) => {
   const famille = evenement.target.closest?.('.famille');
-  if (!famille || ui.recherche.trim()) return;
+  if (!famille || (famille.closest('[data-liste="eaux"]') ? ui.rechercheEau : ui.recherche).trim()) return;
   if (famille.open) ui.famillesOuvertes.add(famille.dataset.famille); else ui.famillesOuvertes.delete(famille.dataset.famille);
 }, true);
 
 document.addEventListener('input', (evenement) => {
   if (evenement.target.matches('[data-recherche]')) { ui.recherche = evenement.target.value; filtrerAliments(); return; }
+  if (evenement.target.matches('[data-recherche-eau]')) { ui.rechercheEau = evenement.target.value; filtrerAliments(); return; }
   const bloc = evenement.target.closest('[data-calcul]');
   if (bloc) calculerEtiquette(bloc);
 });
