@@ -743,6 +743,48 @@ function champRemplir(c, v) {
   return `<label class="champ">${ech(c.libelle)}${c.aide ? `<small>${ech(c.aide)}</small>` : ''}${saisie}</label>`;
 }
 
+// Les médicaments de la fiche : une ligne par médicament, numérotée m0-, m1-… dans le formulaire.
+// Sans brouillon, les lignes sont celles des médicaments en cours du carnet.
+const momentsDeLaLigne = (s, i) => Object.fromEntries(MOMENTS.map((mo) => [mo.id, s[`m${i}-${mo.id}`] === 'on']));
+
+function lignesMedsDepuis(s) {
+  if (s.nbMeds === undefined) {
+    return store.medicamentsEnCours(etat).map((m) => ({ id: m.id, nom: m.nom, dose: m.dose, moments: { ...m.moments }, aQuoiCaSert: m.aQuoiCaSert, arreter: false }));
+  }
+  return Array.from({ length: Number(s.nbMeds) || 0 }, (_, i) => ({
+    id: s[`m${i}-id`] ?? '', nom: s[`m${i}-nom`] ?? '', dose: s[`m${i}-dose`] ?? '', moments: momentsDeLaLigne(s, i),
+    aQuoiCaSert: s[`m${i}-aQuoiCaSert`] ?? '', arreter: s[`m${i}-arreter`] === 'on',
+  }));
+}
+
+function saisieAvecLignes(s, lignes) {
+  const reste = Object.fromEntries(Object.entries(s).filter(([nom]) => !/^m\d+-/.test(nom)));
+  lignes.forEach((l, i) => {
+    if (l.id) reste[`m${i}-id`] = l.id;
+    Object.assign(reste, { [`m${i}-nom`]: l.nom, [`m${i}-dose`]: l.dose, [`m${i}-aQuoiCaSert`]: l.aQuoiCaSert });
+    for (const mo of MOMENTS) if (l.moments[mo.id]) reste[`m${i}-${mo.id}`] = 'on';
+    if (l.arreter) reste[`m${i}-arreter`] = 'on';
+  });
+  return { ...reste, nbMeds: String(lignes.length) };
+}
+
+function ligneMedRemplir(m, i) {
+  return `<div class="med-soignant${m.arreter ? ' a-arreter' : ''}">
+      ${m.id ? `<input type="hidden" name="m${i}-id" value="${ech(m.id)}">` : ''}
+      <div class="deux">
+        <label class="champ">Nom<input type="text" name="m${i}-nom" value="${ech(m.nom)}" placeholder="Tel qu’écrit sur l’ordonnance" autocomplete="off"></label>
+        <label class="champ">Dose<input type="text" name="m${i}-dose" value="${ech(m.dose)}" placeholder="5 mg" autocomplete="off"></label>
+      </div>
+      <div class="coches">${MOMENTS.map((mo) => `<label><input type="checkbox" name="m${i}-${mo.id}" ${m.moments[mo.id] ? 'checked' : ''}>${mo.libelle}</label>`).join('')}</div>
+      <label class="champ">À quoi ça sert<small>Facultatif. La ligne écrite par le soignant.</small><input type="text" name="m${i}-aQuoiCaSert" value="${ech(m.aQuoiCaSert)}" autocomplete="off"></label>
+      <div class="rangee med-actions">
+        ${m.id
+          ? `<label class="arreter"><input type="checkbox" name="m${i}-arreter" ${m.arreter ? 'checked' : ''}> La fiche arrête ce médicament</label>`
+          : `<span class="etiquette neutre">Nouveau</span><button class="lien" type="button" data-action="retirer-ligne-med:${i}">Retirer la ligne</button>`}
+      </div>
+    </div>`;
+}
+
 function vueRemplir() {
   const b = lireBrouillon();
   const s = b?.saisie ?? {};
@@ -754,6 +796,14 @@ function vueRemplir() {
         <div class="bloc">${t.champs.map((c) => champRemplir(c, valeurDe(c.id))).join('')}</div>
       </details>`;
   }).join('');
+  const lignes = lignesMedsDepuis(s);
+  const meds = `<details class="carte theme-soignant" data-theme-remplir="medicaments" ${ui.themesOuverts.has('medicaments') ? 'open' : ''}>
+      <summary class="carte-tete"><span class="pastille bleu">${ic('medicaments')}</span><h2>Médicaments</h2><span class="compte">${lignes.length || ''}</span><span class="chevron">${ic('chevron', 18)}</span></summary>
+      <p class="discret">Vos médicaments en cours sont déjà là. Changez la dose ou les moments si la fiche le dit ; cochez « La fiche arrête ce médicament » s’il est arrêté ; ajoutez ceux qui manquent. La photo de la boîte s’ajoute dans l’écran Médicaments.</p>
+      <input type="hidden" name="nbMeds" value="${lignes.length}">
+      <div class="bloc">${lignes.map(ligneMedRemplir).join('')}</div>
+      <button class="bouton secondaire large" type="button" data-action="ajouter-ligne-med" style="margin-top:12px">${ic('plus', 18)} Ajouter un médicament</button>
+    </details>`;
 
   return `<h1 class="titre-page">Remplir ma fiche</h1>
     <p class="sous-titre">Recopiez votre fiche de sortie en une fois. Ce que vous tapez est gardé au fur et à mesure : si vous quittez cet écran sans le vouloir, le bouton « Continuer ma fiche » vous ramène ici.</p>
@@ -767,10 +817,10 @@ function vueRemplir() {
         </div>
       </section>
       ${themes}
-      <p class="discret" style="padding:0 2px">Les médicaments s’ajoutent dans l’écran Médicaments.</p>
+      ${meds}
       ${ui.erreur ? `<p class="erreur">${ech(ui.erreur)}</p>` : ''}
       <button class="bouton large" type="submit">Enregistrer ma fiche</button>
-      <p class="discret" style="text-align:center">Seuls les champs nouveaux ou modifiés sont enregistrés, chacun avec le médecin et la date choisis en haut. Ce qui était déjà écrit reste dans l’historique ; vider un champ ne l’efface pas du carnet.</p>
+      <p class="discret" style="text-align:center">Seuls les champs et médicaments nouveaux ou modifiés sont enregistrés, chacun avec le médecin et la date choisis en haut. Ce qui était déjà écrit reste dans l’historique ; vider un champ ne l’efface pas du carnet.</p>
       ${b ? '<button class="bouton neutre large" type="button" data-action="abandonner-brouillon">Abandonner cette fiche commencée</button>' : ''}
     </form>
     ${mention()}`;
@@ -1333,6 +1383,17 @@ document.addEventListener('click', (evenement) => {
     } catch (e) { ui.erreur = e.message; }
     rendre();
   }
+  else if (action === 'ajouter-ligne-med' || action === 'retirer-ligne-med') {
+    const formulaire = cible.closest('form');
+    const s = Object.fromEntries(new FormData(formulaire));
+    const lignes = lignesMedsDepuis(s);
+    if (action === 'ajouter-ligne-med') lignes.push({ id: '', nom: '', dose: '', moments: {}, aQuoiCaSert: '', arreter: false });
+    else lignes.splice(Number(a), 1);
+    sauverBrouillon(saisieAvecLignes(s, lignes));
+    ui.themesOuverts.add('medicaments');
+    rendre();
+    if (action === 'ajouter-ligne-med') document.querySelector(`[name="m${lignes.length - 1}-nom"]`)?.focus();
+  }
   else if (action === 'retirer-medecin') { if (confirm('Retirer ce médecin de votre liste ? Les consignes déjà écrites gardent son nom.')) tenter(() => store.retirerMedecin(etat, a), { fermer: false }); }
   else if (action === 'abandonner-brouillon') { if (confirm('Abandonner cette fiche commencée ? Ce qui a été tapé et pas enregistré sera perdu.')) { effacerBrouillon(); aller('fiche'); } }
   else if (action === 'retirer-seance') { if (confirm('Retirer cette note ?')) tenter(() => store.retirerSeance(etat, a), { fermer: false }); }
@@ -1404,13 +1465,21 @@ document.addEventListener('submit', (evenement) => {
     try {
       const auteur = auteurDepuis(s);
       const consignes = Object.fromEntries(Object.entries(s).filter(([nom]) => nom.startsWith('c-')).map(([nom, v]) => [nom.slice(2), v]));
-      const { etat: rempli, ecrits } = store.remplirFiche(etat, { auteur, date: s.date, consignes }, maintenant());
+      const { etat: rempli, ecrits, medicaments } = store.remplirFiche(etat, { auteur, date: s.date, consignes, medicaments: lignesMedsDepuis(s) }, maintenant());
       enregistrer(rempli);
       effacerBrouillon();
       // L'écran du formulaire est remplacé dans l'historique : « retour » n'y ramène pas.
       history.replaceState(null, '', '#fiche');
       aller('fiche');
-      ui.messageFiche = `${ecrits.length} renseignement${ecrits.length > 1 ? 's' : ''} rangé${ecrits.length > 1 ? 's' : ''} dans le carnet${auteur ? `, écrit${ecrits.length > 1 ? 's' : ''} par ${auteur}` : ''}${s.date ? ` le ${dateCourte(s.date)}` : ''}.`;
+      const pluriel = (n, mot) => `${n} ${mot}${n > 1 ? 's' : ''}`;
+      const compte = (type) => medicaments.filter((m) => m.type === type).length;
+      const parties = [
+        ecrits.length ? `${pluriel(ecrits.length, 'renseignement')} rangé${ecrits.length > 1 ? 's' : ''}` : '',
+        compte('nouveau') ? `${pluriel(compte('nouveau'), 'médicament')} ajouté${compte('nouveau') > 1 ? 's' : ''}` : '',
+        compte('change') ? `${pluriel(compte('change'), 'médicament')} modifié${compte('change') > 1 ? 's' : ''}` : '',
+        compte('arret') ? `${pluriel(compte('arret'), 'médicament')} arrêté${compte('arret') > 1 ? 's' : ''}` : '',
+      ].filter(Boolean);
+      ui.messageFiche = `${parties.join(', ')}${auteur ? ` · écrit par ${auteur}` : ''}${s.date ? ` le ${dateCourte(s.date)}` : ''}.`;
       rendre();
     } catch (e) {
       ui.erreur = e.message;
@@ -1447,7 +1516,12 @@ function remplacerPhotos(objet) {
 
 document.addEventListener('change', async (evenement) => {
   const fiche = evenement.target.closest('[data-form="remplir"]');
-  if (fiche) { sauverBrouillon(Object.fromEntries(new FormData(fiche))); return; }
+  if (fiche) {
+    // La ligne d'un médicament à arrêter se voit tout de suite.
+    if (evenement.target.name?.endsWith('-arreter')) evenement.target.closest('.med-soignant')?.classList.toggle('a-arreter', evenement.target.checked);
+    sauverBrouillon(Object.fromEntries(new FormData(fiche)));
+    return;
+  }
   if (evenement.target.matches('[data-choix-eau]')) { tenter(() => store.choisirEau(etat, evenement.target.value), { fermer: false }); return; }
   if (evenement.target.id === 'fichier-photo') {
     const fichier = evenement.target.files[0];

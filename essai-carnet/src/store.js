@@ -58,9 +58,12 @@ export const medecinParId = (etat, id) => (etat.medecins ?? []).find((m) => m.id
 /**
  * Range d'un coup une fiche remplie en entier : chaque champ nouveau ou modifié devient une nouvelle version,
  * signée et datée ; un champ identique à ce qui est déjà écrit, ou laissé vide, ne change rien.
- * consignes : { idDuChamp: valeur }. Renvoie { etat, ecrits } (ecrits : les identifiants enregistrés).
+ * consignes : { idDuChamp: valeur }.
+ * medicaments (version 17) : [{ id, nom, dose, moments, aQuoiCaSert, arreter }] ; avec id, un médicament du carnet
+ * (modifié s'il a changé, arrêté si arreter) ; sans id, un médicament à ajouter ; une ligne vide est ignorée.
+ * Renvoie { etat, ecrits, medicaments } : les champs écrits, et [{ nom, type: 'nouveau' | 'change' | 'arret' }].
  */
-export function remplirFiche(etat, { auteur, date, consignes }, maintenant) {
+export function remplirFiche(etat, { auteur, date, consignes, medicaments = [] }, maintenant) {
   if (date && !estDateIso(date)) throw new Error('La date de la fiche est invalide.');
   let e = etat;
   const ecrits = [];
@@ -72,8 +75,30 @@ export function remplirFiche(etat, { auteur, date, consignes }, maintenant) {
     e = ecrireConsigne(e, id, simple ? { valeur } : { valeur, auteur, date }, maintenant);
     ecrits.push(id);
   }
-  if (!ecrits.length) throw new Error('Rien de nouveau à enregistrer : tous les champs remplis sont déjà dans le carnet.');
-  return { etat: e, ecrits };
+  const meds = [];
+  const enCours = medicamentsEnCours(e);
+  for (const ligne of medicaments) {
+    const nom = texte(ligne.nom);
+    const actuel = ligne.id ? enCours.find((m) => m.id === ligne.id) : null;
+    if (ligne.id) {
+      if (!actuel) continue; // arrêté ou retiré ailleurs entre-temps
+      if (ligne.arreter) { e = arreterMedicament(e, actuel.id, date || maintenant.slice(0, 10)); meds.push({ nom: actuel.nom, type: 'arret' }); continue; }
+      const nouveau = { nom: nom || actuel.nom, dose: texte(ligne.dose), moments: lireMedicament({ nom: 'x', moments: ligne.moments }).moments, aQuoiCaSert: texte(ligne.aQuoiCaSert) };
+      const avant = { nom: actuel.nom, dose: actuel.dose, moments: actuel.moments, aQuoiCaSert: actuel.aQuoiCaSert };
+      if (JSON.stringify(nouveau) === JSON.stringify(avant)) continue;
+      e = modifierMedicament(e, actuel.id, { ...nouveau, ecritPar: auteur }, maintenant);
+      meds.push({ nom: nouveau.nom, type: 'change' });
+    } else {
+      const remplie = nom || texte(ligne.dose) || texte(ligne.aQuoiCaSert) || MOMENTS.some((m) => ligne.moments?.[m.id]);
+      if (!remplie) continue;
+      if (!nom) throw new Error('Une ligne de médicament n’a pas de nom.');
+      if (medicamentsEnCours(e).some((m) => nomCompare(m.nom) === nomCompare(nom))) throw new Error(`${nom} est déjà dans votre liste de médicaments : changez plutôt sa ligne.`);
+      e = ajouterMedicament(e, { nom, dose: ligne.dose, moments: ligne.moments, aQuoiCaSert: ligne.aQuoiCaSert, ecritPar: auteur }, maintenant);
+      meds.push({ nom, type: 'nouveau' });
+    }
+  }
+  if (!ecrits.length && !meds.length) throw new Error('Rien de nouveau à enregistrer : tout ce qui est rempli est déjà dans le carnet.');
+  return { etat: e, ecrits, medicaments: meds };
 }
 
 /** La dernière version écrite, ou null si le champ n'a jamais été renseigné. */
