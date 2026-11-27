@@ -12,7 +12,7 @@ export const SCHEMA = 1;
 export const FORMAT = 'carnet-coeur';
 
 export function etatVide() {
-  return { schema: SCHEMA, exemple: false, consignes: {}, medicaments: [], prises: {}, poids: [], rendezVous: [], suivi: {}, boissons: {}, reception: null, fichesRecues: [], mesEaux: [], eauChoisie: '', seances: [] };
+  return { schema: SCHEMA, exemple: false, consignes: {}, medicaments: [], prises: {}, poids: [], rendezVous: [], suivi: {}, boissons: {}, reception: null, fichesRecues: [], mesEaux: [], eauChoisie: '', seances: [], medecins: [] };
 }
 
 const texte = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -36,6 +36,44 @@ export function ecrireConsigne(etat, id, saisie, maintenant) {
   };
   const versions = [...(etat.consignes[id] ?? []), version];
   return { ...etat, consignes: { ...etat.consignes, [id]: versions } };
+}
+
+// ---------- Mes médecins (version 17) ----------
+
+/** Un soignant que la personne enregistre une fois, pour le choisir ensuite au lieu de retaper son nom. */
+export function ajouterMedecin(etat, { nom, fonction }, maintenant) {
+  const n = texte(nom);
+  if (!n) throw new Error('Donnez le nom du médecin.');
+  const medecin = { id: nouvelId('medecin', maintenant), nom: n.slice(0, 80), fonction: texte(fonction).slice(0, 80), saisiLe: maintenant };
+  return { ...etat, medecins: [...(etat.medecins ?? []), medecin] };
+}
+
+export const retirerMedecin = (etat, id) => ({ ...etat, medecins: (etat.medecins ?? []).filter((m) => m.id !== id) });
+
+/** « Dr Martin, cardiologue » : ce qui est écrit dans « Écrit par ». */
+export const signatureMedecin = (m) => (m ? [m.nom, m.fonction].filter(Boolean).join(', ') : '');
+
+export const medecinParId = (etat, id) => (etat.medecins ?? []).find((m) => m.id === id) ?? null;
+
+/**
+ * Range d'un coup une fiche remplie en entier : chaque champ nouveau ou modifié devient une nouvelle version,
+ * signée et datée ; un champ identique à ce qui est déjà écrit, ou laissé vide, ne change rien.
+ * consignes : { idDuChamp: valeur }. Renvoie { etat, ecrits } (ecrits : les identifiants enregistrés).
+ */
+export function remplirFiche(etat, { auteur, date, consignes }, maintenant) {
+  if (date && !estDateIso(date)) throw new Error('La date de la fiche est invalide.');
+  let e = etat;
+  const ecrits = [];
+  for (const [id, brut] of Object.entries(consignes ?? {})) {
+    if (!CHAMPS.has(id)) continue;
+    const valeur = texte(brut);
+    if (!valeur || valeur === consigneCourante(e, id)?.valeur) continue;
+    const simple = CHAMPS.get(id).simple;
+    e = ecrireConsigne(e, id, simple ? { valeur } : { valeur, auteur, date }, maintenant);
+    ecrits.push(id);
+  }
+  if (!ecrits.length) throw new Error('Rien de nouveau à enregistrer : tous les champs remplis sont déjà dans le carnet.');
+  return { etat: e, ecrits };
 }
 
 /** La dernière version écrite, ou null si le champ n'a jamais été renseigné. */
@@ -522,6 +560,14 @@ export function valider(donnees) {
     });
   }
   etat.eauChoisie = texte(String(donnees.eauChoisie ?? ''));
+  // Absents des carnets enregistrés avant la version 17.
+  if (donnees.medecins !== undefined) {
+    if (!Array.isArray(donnees.medecins)) throw new Error('Médecins illisibles.');
+    etat.medecins = donnees.medecins.map((m) => {
+      if (!estObjet(m) || !texte(m.id) || !texte(m.nom)) throw new Error('Un médecin est illisible.');
+      return { id: m.id, nom: texte(m.nom), fonction: texte(m.fonction), saisiLe: texte(m.saisiLe) };
+    });
+  }
   if (donnees.seances !== undefined) {
     if (!Array.isArray(donnees.seances)) throw new Error('Séances illisibles.');
     etat.seances = donnees.seances.map((s) => {
@@ -611,6 +657,9 @@ export function etatExemple(aujourdhui) {
   e = boire(e, aujourdhui, 200, quand, { code: '76049', nom: 'St-Yorre, gazeuse', sodiumMgL: 1710 });
   e = noterSeance(e, { date: ajouterJours(aujourdhui, -3), fait: true, type: 'Marche', duree: '30' }, quand);
   e = noterSeance(e, { date: ajouterJours(aujourdhui, -1), fait: false, raison: 'Fatigue' }, quand);
+  e = ajouterMedecin(e, { nom: 'Dr Essai 1', fonction: 'cardiologue' }, quand);
+  e = ajouterMedecin(e, { nom: 'Dr Essai 2', fonction: 'médecin traitant' }, quand);
+  e = ajouterMedecin(e, { nom: 'Dr Essai 3', fonction: 'médecin de réadaptation' }, quand);
   e = ajouterRendezVous(e, { date: ajouterJours(aujourdhui, 12), heure: '10:30', avec: 'Cardiologue (exemple)', lieu: 'Consultation' }, quand);
   return e;
 }

@@ -23,7 +23,8 @@ const VUES = [
 ];
 // « Ma fiche » n'est plus dans la barre du bas : on y va depuis l'accueil.
 // « soignant » : dans le carnet, les fiches reçues des soignants. Le soignant, lui, remplit soignant.html (versions 13 et 14).
-const ROUTES = [...VUES.map((v) => v.id), 'fiche', 'soignant'];
+// « remplir » : la fiche de sortie recopiée en une fois (version 17).
+const ROUTES = [...VUES.map((v) => v.id), 'fiche', 'soignant', 'remplir'];
 
 // ---------- État ----------
 
@@ -39,7 +40,7 @@ function charger() {
 
 let etat = charger();
 let photos = new Map(); // identifiant du médicament → image, chargées au démarrage
-const ui = { vue: vueDepuisAdresse(), feuille: null, periode: 30, erreur: '', recherche: '', rechercheEau: '', famillesOuvertes: new Set() };
+const ui = { vue: vueDepuisAdresse(), feuille: null, periode: 30, erreur: '', recherche: '', rechercheEau: '', famillesOuvertes: new Set(), themesOuverts: new Set(['coeur']), messageFiche: '' };
 
 function vueDepuisAdresse() {
   const id = location.hash.slice(1);
@@ -53,6 +54,28 @@ function enregistrer(nouvelEtat) {
 
 const aujourdhui = () => versIso();
 const maintenant = () => new Date().toISOString();
+
+// ---------- Brouillon de la fiche (version 17) ----------
+// Ce qui est tapé dans « Remplir ma fiche » est gardé sur l'appareil à chaque frappe, à part du carnet :
+// un geste « retour » ou une appli fermée par erreur ne fait rien perdre. Effacé quand la fiche est enregistrée.
+
+const CLE_BROUILLON = 'carnet-coeur-brouillon';
+
+function lireBrouillon() {
+  try {
+    const b = JSON.parse(localStorage.getItem(CLE_BROUILLON));
+    return b && typeof b === 'object' && b.saisie && typeof b.saisie === 'object' ? b : null;
+  } catch { return null; }
+}
+
+function sauverBrouillon(saisie) {
+  const commenceLe = lireBrouillon()?.commenceLe ?? maintenant();
+  try { localStorage.setItem(CLE_BROUILLON, JSON.stringify({ commenceLe, saisie })); } catch (e) { console.error('Brouillon non gardé', e); }
+}
+
+function effacerBrouillon() {
+  try { localStorage.removeItem(CLE_BROUILLON); } catch { /* rien à faire */ }
+}
 
 // ---------- Petits outils d'affichage ----------
 
@@ -122,12 +145,12 @@ function vueAujourdhui() {
     </button>`;
 
   if (carnetVide()) {
-    return `${bandeau}${tuilesAccueil()}
+    return `${bandeau}${carteBrouillon()}${tuilesAccueil()}
       <section class="carte">
         <div class="carte-tete"><span class="pastille primaire">${ic('coeur')}</span><h2>Bienvenue dans votre carnet</h2></div>
         <p class="discret">Il range au même endroit ce que vos soignants ont écrit pour vous, votre poids jour après jour et vos médicaments. Tout reste sur cet appareil.</p>
         <div class="rangee" style="margin-top:16px">
-          <button class="bouton" data-action="nav:fiche">Remplir ma fiche</button>
+          <button class="bouton" data-action="nav:remplir">Remplir ma fiche</button>
           <button class="bouton secondaire" data-action="exemple">Voir un exemple</button>
         </div>
       </section>
@@ -189,7 +212,7 @@ function vueAujourdhui() {
         </span><span class="chevron">${ic('chevron', 18)}</span></button></li>`).join('')}</ul>
     </section>` : '';
 
-  return `${bandeau}${bandeauReception()}${bandeauExemple()}${tuilesAccueil()}${cartePoids}${carteMeds}${carteRdv}${carteRevoir}${lienFiche}${lienSoignant}${mention()}`;
+  return `${bandeau}${carteBrouillon()}${bandeauReception()}${bandeauExemple()}${tuilesAccueil()}${cartePoids}${carteMeds}${carteRdv}${carteRevoir}${lienFiche}${lienSoignant}${mention()}`;
 }
 
 /** Les priorités, toujours en haut de l'accueil : poids, alimentation, liquides, et les séances (version 16). */
@@ -644,10 +667,113 @@ function vueFiche() {
     </section>`;
   }).join('');
 
+  const message = ui.messageFiche ? `<div class="bandeau reception">${ic('coche', 20)}<div class="corps"><b>Fiche enregistrée.</b> ${ech(ui.messageFiche)}</div></div>` : '';
+  const remplir = lireBrouillon() ? carteBrouillon() : `<button class="bouton large" data-action="nav:remplir">${ic('fiche', 18)} Remplir toute ma fiche d’un coup</button>`;
+
   return `<h1 class="titre-page">Ma fiche</h1>
     <p class="sous-titre">Ce que vos soignants ont écrit pour vous. Un champ vide reste vide : rien n’est complété à leur place.</p>
-    <p class="discret" style="padding:0 2px;margin-top:-8px">Le poids, le sel et les liquides se règlent depuis l’accueil.</p>
-    ${bandeauExemple()}${themes}${mention()}`;
+    ${message}${bandeauExemple()}${remplir}
+    <p class="discret" style="padding:0 2px">Ou touchez une ligne pour changer un seul renseignement. Le poids, le sel et les liquides se règlent aussi depuis l’accueil.</p>
+    ${carteMedecins()}${themes}${mention()}`;
+}
+
+/** Les médecins enregistrés une fois, pour les choisir ensuite d'une touche. */
+function carteMedecins() {
+  const liste = etat.medecins ?? [];
+  return `<section class="carte">
+      <div class="carte-tete"><span class="pastille bleu">${ic('fiche')}</span><h2>Mes médecins</h2><span class="compte">${liste.length || ''}</span></div>
+      <p class="discret">Enregistrés une fois ici, ils se choisissent d’une touche quand vous recopiez une consigne.</p>
+      ${liste.length ? `<ul class="liste">${liste.map((m) => `<li><div class="ligne"><div class="corps"><span class="valeur">${ech(m.nom)}</span>${m.fonction ? `<br><span class="meta">${ech(m.fonction)}</span>` : ''}</div>
+        <button class="bouton-rond" data-action="retirer-medecin:${m.id}" aria-label="Retirer ${ech(m.nom)}">${ic('croix', 18)}</button></div></li>`).join('')}</ul>` : ''}
+      <form data-form="medecin" style="display:grid;gap:10px;margin-top:12px">
+        <div class="deux">
+          <label class="champ">Nom<input type="text" name="nom" placeholder="Dr Martin" autocomplete="off" required></label>
+          <label class="champ">Fonction<input type="text" name="fonction" placeholder="cardiologue" autocomplete="off"></label>
+        </div>
+        ${ui.erreurMedecin ? `<p class="erreur">${ech(ui.erreurMedecin)}</p>` : ''}
+        <button class="bouton secondaire large" type="submit">${ic('plus', 18)} Ajouter ce médecin</button>
+      </form>
+    </section>`;
+}
+
+/** « Continuer ma fiche » : affiché tant qu'une fiche commencée n'est pas enregistrée. */
+function carteBrouillon() {
+  const b = lireBrouillon();
+  if (!b) return '';
+  const quand = b.commenceLe ? ` le ${dateCourte(versIso(new Date(b.commenceLe)))}` : '';
+  return `<section class="carte carte-brouillon">
+      <div class="carte-tete"><span class="pastille ambre">${ic('fiche')}</span><h2>Fiche commencée, pas encore enregistrée</h2></div>
+      <p class="discret">Commencée${quand}. Tout ce que vous avez tapé est gardé.</p>
+      <button class="bouton large" style="margin-top:12px" data-action="nav:remplir">Continuer ma fiche</button>
+    </section>`;
+}
+
+/** Les médecins à toucher, et de quoi en ajouter un sans quitter l'écran. */
+function choixMedecin(choisi, titre) {
+  const liste = etat.medecins ?? [];
+  return `<div class="champ"><span class="titre-champ">${titre}</span>
+      ${liste.length
+        ? `<div class="coches choix-unique choix-medecin">${liste.map((m) => `<label><input type="radio" name="medecin" value="${ech(m.id)}" ${m.id === choisi ? 'checked' : ''}><span><b>${ech(m.nom)}</b>${m.fonction ? `<br><small>${ech(m.fonction)}</small>` : ''}</span></label>`).join('')}</div>`
+        : '<small>Aucun médecin enregistré. Ajoutez-le une fois ci-dessous : ensuite, il suffira de le toucher.</small>'}
+      <details class="ajout-medecin" ${liste.length ? '' : 'open'}><summary>${ic('plus', 16)} Ajouter un médecin</summary>
+        <div class="deux">
+          <label class="champ">Nom<input type="text" name="nouveauNom" placeholder="Dr Martin" autocomplete="off"></label>
+          <label class="champ">Fonction<input type="text" name="nouvelleFonction" placeholder="cardiologue" autocomplete="off"></label>
+        </div>
+        <button class="bouton secondaire" type="button" data-action="ajouter-medecin">Ajouter et choisir</button>
+      </details>
+    </div>`;
+}
+
+/** Le nom écrit dans « Écrit par » : le médecin touché, ou celui tapé dans « Ajouter un médecin » sans avoir appuyé. */
+function auteurDepuis(s) {
+  if (!s.medecin && String(s.nouveauNom ?? '').trim()) {
+    enregistrer(store.ajouterMedecin(etat, { nom: s.nouveauNom, fonction: s.nouvelleFonction }, maintenant()));
+    return store.signatureMedecin(etat.medecins[etat.medecins.length - 1]);
+  }
+  return store.signatureMedecin(store.medecinParId(etat, s.medecin));
+}
+
+// ---------- Écran : Remplir ma fiche (version 17) ----------
+
+function champRemplir(c, v) {
+  const saisie = c.long
+    ? `<textarea name="c-${c.id}" rows="2">${ech(v)}</textarea>`
+    : `<span class="${c.unite ? 'champ-unite' : ''}"><input type="text" name="c-${c.id}" value="${ech(v)}" ${c.unite ? 'inputmode="decimal"' : ''} autocomplete="off">${c.unite ? `<span>${c.unite}</span>` : ''}</span>`;
+  return `<label class="champ">${ech(c.libelle)}${c.aide ? `<small>${ech(c.aide)}</small>` : ''}${saisie}</label>`;
+}
+
+function vueRemplir() {
+  const b = lireBrouillon();
+  const s = b?.saisie ?? {};
+  const valeurDe = (id) => s[`c-${id}`] ?? store.consigneCourante(etat, id)?.valeur ?? '';
+  const themes = THEMES.map((t) => {
+    const remplis = t.champs.filter((c) => String(valeurDe(c.id)).trim()).length;
+    return `<details class="carte theme-soignant" data-theme-remplir="${t.id}" ${ui.themesOuverts.has(t.id) ? 'open' : ''}>
+        <summary class="carte-tete"><span class="pastille ${t.couleur}">${ic(t.icone)}</span><h2>${ech(t.titre)}</h2><span class="compte">${remplis} / ${t.champs.length}</span><span class="chevron">${ic('chevron', 18)}</span></summary>
+        <div class="bloc">${t.champs.map((c) => champRemplir(c, valeurDe(c.id))).join('')}</div>
+      </details>`;
+  }).join('');
+
+  return `<h1 class="titre-page">Remplir ma fiche</h1>
+    <p class="sous-titre">Recopiez votre fiche de sortie en une fois. Ce que vous tapez est gardé au fur et à mesure : si vous quittez cet écran sans le vouloir, le bouton « Continuer ma fiche » vous ramène ici.</p>
+    ${bandeauExemple()}
+    <form data-form="remplir" class="formulaire-soignant">
+      <section class="carte">
+        <div class="carte-tete"><span class="pastille primaire">${ic('fiche')}</span><h2>Qui a rempli la fiche</h2></div>
+        <div class="bloc">
+          ${choixMedecin(s.medecin ?? '', 'Fiche remplie par')}
+          <label class="champ">Date de la fiche<small>La date du jour est mise d’office. Changez-la si la fiche a été écrite un autre jour.</small><input type="date" name="date" value="${ech(s.date ?? aujourdhui())}" max="${aujourdhui()}"></label>
+        </div>
+      </section>
+      ${themes}
+      <p class="discret" style="padding:0 2px">Les médicaments s’ajoutent dans l’écran Médicaments.</p>
+      ${ui.erreur ? `<p class="erreur">${ech(ui.erreur)}</p>` : ''}
+      <button class="bouton large" type="submit">Enregistrer ma fiche</button>
+      <p class="discret" style="text-align:center">Seuls les champs nouveaux ou modifiés sont enregistrés, chacun avec le médecin et la date choisis en haut. Ce qui était déjà écrit reste dans l’historique ; vider un champ ne l’efface pas du carnet.</p>
+      ${b ? '<button class="bouton neutre large" type="button" data-action="abandonner-brouillon">Abandonner cette fiche commencée</button>' : ''}
+    </form>
+    ${mention()}`;
 }
 
 // ---------- Écran : Poids ----------
@@ -948,17 +1074,19 @@ function feuilleConsigne(id) {
   const c = CHAMPS.get(id);
   const v = store.consigneCourante(etat, id);
   const historique = store.historiqueConsigne(etat, id);
+  const sf = ui.feuille?.saisie ?? {}; // ce qui était tapé avant d'ajouter un médecin
+  const texteValeur = sf.valeur ?? v?.valeur;
   const valeur = c.long
-    ? `<textarea name="valeur" required>${ech(v?.valeur)}</textarea>`
-    : `<span class="${c.unite ? 'champ-unite' : ''}"><input type="text" name="valeur" value="${ech(v?.valeur)}" ${c.unite ? 'inputmode="decimal"' : ''} autocomplete="off" required>${c.unite ? `<span>${c.unite}</span>` : ''}</span>`;
+    ? `<textarea name="valeur" required>${ech(texteValeur)}</textarea>`
+    : `<span class="${c.unite ? 'champ-unite' : ''}"><input type="text" name="valeur" value="${ech(texteValeur)}" ${c.unite ? 'inputmode="decimal"' : ''} autocomplete="off" required>${c.unite ? `<span>${c.unite}</span>` : ''}</span>`;
   return `<div class="feuille-tete"><h2>${ech(c.libelle)}</h2><button class="bouton-rond" data-action="fermer" aria-label="Fermer">${ic('croix', 18)}</button></div>
     <form data-form="consigne" data-id="${id}">
       <label class="champ">${c.simple ? 'Renseignement' : 'Ce qui est écrit'}${c.aide ? `<small>${ech(c.aide)}</small>` : ''}${valeur}</label>
       ${c.simple ? '' : `
-        <label class="champ">Écrit par<small>Nom et fonction du soignant.</small><input type="text" name="auteur" value="${ech(v?.auteur)}" autocomplete="off"></label>
+        ${choixMedecin(sf.medecin ?? '', 'Écrit par')}
         <div class="deux">
-          <label class="champ">Écrit le<input type="date" name="date" value="${ech(v?.date)}" max="${aujourdhui()}"></label>
-          <label class="champ">À réévaluer le<input type="date" name="reevaluerLe" value="${ech(v?.reevaluerLe)}"></label>
+          <label class="champ">Écrit le<input type="date" name="date" value="${ech(sf.date ?? aujourdhui())}" max="${aujourdhui()}"></label>
+          <label class="champ">À réévaluer le<input type="date" name="reevaluerLe" value="${ech(sf.reevaluerLe ?? v?.reevaluerLe)}"></label>
         </div>`}
       ${ui.erreur ? `<p class="erreur">${ech(ui.erreur)}</p>` : ''}
       <button class="bouton large" type="submit">Enregistrer</button>
@@ -1114,7 +1242,7 @@ function feuille() {
 // ---------- Assemblage ----------
 
 function rendre() {
-  const contenu = ui.vue === 'fiche' ? vueFiche() : ui.vue === 'poids' ? vuePoids() : ui.vue === 'medicaments' ? vueMedicaments() : ui.vue === 'alimentation' ? vueAlimentation() : ui.vue === 'liquides' ? vueLiquides() : ui.vue === 'seances' ? vueSeances() : ui.vue === 'soignant' ? vueSoignant() : vueAujourdhui();
+  const contenu = ui.vue === 'fiche' ? vueFiche() : ui.vue === 'poids' ? vuePoids() : ui.vue === 'medicaments' ? vueMedicaments() : ui.vue === 'alimentation' ? vueAlimentation() : ui.vue === 'liquides' ? vueLiquides() : ui.vue === 'seances' ? vueSeances() : ui.vue === 'soignant' ? vueSoignant() : ui.vue === 'remplir' ? vueRemplir() : vueAujourdhui();
   document.getElementById('app').innerHTML = `
     <header class="barre">
       ${ui.vue === 'aujourdhui'
@@ -1132,7 +1260,7 @@ function rendre() {
 }
 
 function aller(vue) {
-  ui.vue = vue; ui.feuille = null; ui.erreur = ''; ui.erreurLimite = ''; ui.erreurBoisson = '';
+  ui.vue = vue; ui.feuille = null; ui.erreur = ''; ui.erreurLimite = ''; ui.erreurBoisson = ''; ui.erreurMedecin = ''; ui.messageFiche = '';
   if (location.hash.slice(1) !== vue) {
     // Quitter l'accueil ajoute une étape à l'historique : le geste « retour » du téléphone ramène alors à l'accueil
     // au lieu de fermer l'appli.
@@ -1194,6 +1322,19 @@ document.addEventListener('click', (evenement) => {
   else if (action === 'boire') { ui.erreurBoisson = ''; tenter(() => store.boire(etat, jour, a, maintenant(), eauPourBoire()), { fermer: false }); }
   else if (action === 'retirer-mon-eau') { if (confirm('Retirer cette eau de votre liste ? Les boissons déjà notées gardent leur sel.')) tenter(() => store.retirerMonEau(etat, a), { fermer: false }); }
   else if (action === 'ouvrir-seance') { ui.feuille = { type: 'seance', arg: a }; ui.erreur = ''; rendre(); }
+  else if (action === 'ajouter-medecin') {
+    const formulaire = cible.closest('form');
+    const s = Object.fromEntries(new FormData(formulaire));
+    try {
+      enregistrer(store.ajouterMedecin(etat, { nom: s.nouveauNom, fonction: s.nouvelleFonction }, maintenant()));
+      const saisie = { ...s, medecin: etat.medecins[etat.medecins.length - 1].id, nouveauNom: '', nouvelleFonction: '' };
+      if (formulaire.dataset.form === 'remplir') sauverBrouillon(saisie); else if (ui.feuille) ui.feuille.saisie = saisie;
+      ui.erreur = '';
+    } catch (e) { ui.erreur = e.message; }
+    rendre();
+  }
+  else if (action === 'retirer-medecin') { if (confirm('Retirer ce médecin de votre liste ? Les consignes déjà écrites gardent son nom.')) tenter(() => store.retirerMedecin(etat, a), { fermer: false }); }
+  else if (action === 'abandonner-brouillon') { if (confirm('Abandonner cette fiche commencée ? Ce qui a été tapé et pas enregistré sera perdu.')) { effacerBrouillon(); aller('fiche'); } }
   else if (action === 'retirer-seance') { if (confirm('Retirer cette note ?')) tenter(() => store.retirerSeance(etat, a), { fermer: false }); }
   else if (action === 'vider-boissons') { if (confirm('Remettre la bouteille à plein ? Les boissons notées aujourd’hui seront effacées.')) tenter(() => store.viderBoissons(etat, jour), { fermer: false }); }
   else if (action === 'retirer-boisson') tenter(() => store.retirerBoisson(etat, jour, a), { fermer: false });
@@ -1254,7 +1395,28 @@ document.addEventListener('submit', (evenement) => {
   }
   else if (type === 'poids-rapide') tenter(() => store.noterPoids(etat, { date: aujourdhui(), kg: s.kg }, maintenant()));
   else if (type === 'poids') tenter(() => store.noterPoids(etat, s, maintenant()));
-  else if (type === 'consigne') tenter(() => store.ecrireConsigne(etat, id, s, maintenant()));
+  else if (type === 'consigne') tenter(() => { const auteur = auteurDepuis(s); return store.ecrireConsigne(etat, id, { ...s, auteur }, maintenant()); });
+  else if (type === 'medecin') {
+    try { enregistrer(store.ajouterMedecin(etat, s, maintenant())); ui.erreurMedecin = ''; } catch (e) { ui.erreurMedecin = e.message; }
+    rendre();
+  }
+  else if (type === 'remplir') {
+    try {
+      const auteur = auteurDepuis(s);
+      const consignes = Object.fromEntries(Object.entries(s).filter(([nom]) => nom.startsWith('c-')).map(([nom, v]) => [nom.slice(2), v]));
+      const { etat: rempli, ecrits } = store.remplirFiche(etat, { auteur, date: s.date, consignes }, maintenant());
+      enregistrer(rempli);
+      effacerBrouillon();
+      // L'écran du formulaire est remplacé dans l'historique : « retour » n'y ramène pas.
+      history.replaceState(null, '', '#fiche');
+      aller('fiche');
+      ui.messageFiche = `${ecrits.length} renseignement${ecrits.length > 1 ? 's' : ''} rangé${ecrits.length > 1 ? 's' : ''} dans le carnet${auteur ? `, écrit${ecrits.length > 1 ? 's' : ''} par ${auteur}` : ''}${s.date ? ` le ${dateCourte(s.date)}` : ''}.`;
+      rendre();
+    } catch (e) {
+      ui.erreur = e.message;
+      rendre();
+    }
+  }
   else if (type === 'rdv') tenter(() => store.ajouterRendezVous(etat, { ...s, heure: s.heureH ? `${s.heureH}:${s.heureM || '00'}` : '' }, maintenant()));
   else if (type === 'medicament') {
     const saisie = { ...s, moments: Object.fromEntries(MOMENTS.map((m) => [m.id, s[`moment-${m.id}`] === 'on'])) };
@@ -1284,6 +1446,8 @@ function remplacerPhotos(objet) {
 }
 
 document.addEventListener('change', async (evenement) => {
+  const fiche = evenement.target.closest('[data-form="remplir"]');
+  if (fiche) { sauverBrouillon(Object.fromEntries(new FormData(fiche))); return; }
   if (evenement.target.matches('[data-choix-eau]')) { tenter(() => store.choisirEau(etat, evenement.target.value), { fermer: false }); return; }
   if (evenement.target.id === 'fichier-photo') {
     const fichier = evenement.target.files[0];
@@ -1319,12 +1483,16 @@ document.addEventListener('change', async (evenement) => {
 
 // Une famille d'aliments ouverte le reste quand l'écran est redessiné.
 document.addEventListener('toggle', (evenement) => {
+  const theme = evenement.target.closest?.('[data-theme-remplir]');
+  if (theme && evenement.target === theme) { if (theme.open) ui.themesOuverts.add(theme.dataset.themeRemplir); else ui.themesOuverts.delete(theme.dataset.themeRemplir); return; }
   const famille = evenement.target.closest?.('.famille');
   if (!famille || (famille.closest('[data-liste="eaux"]') ? ui.rechercheEau : ui.recherche).trim()) return;
   if (famille.open) ui.famillesOuvertes.add(famille.dataset.famille); else ui.famillesOuvertes.delete(famille.dataset.famille);
 }, true);
 
 document.addEventListener('input', (evenement) => {
+  const fiche = evenement.target.closest('[data-form="remplir"]');
+  if (fiche) { sauverBrouillon(Object.fromEntries(new FormData(fiche))); return; }
   if (evenement.target.matches('[data-recherche]')) { ui.recherche = evenement.target.value; filtrerAliments(); return; }
   if (evenement.target.matches('[data-recherche-eau]')) { ui.rechercheEau = evenement.target.value; filtrerAliments(); return; }
   const bloc = evenement.target.closest('[data-calcul]');
@@ -1335,7 +1503,7 @@ document.addEventListener('keydown', (evenement) => {
   if (evenement.key === 'Escape' && ui.feuille) { ui.feuille = null; ui.erreur = ''; rendre(); }
 });
 
-window.addEventListener('hashchange', async () => { ui.retourPossible = false; ui.vue = vueDepuisAdresse(); ui.feuille = null; await traiterReception(); rendre(); window.scrollTo(0, 0); });
+window.addEventListener('hashchange', async () => { ui.retourPossible = false; ui.vue = vueDepuisAdresse(); ui.feuille = null; ui.messageFiche = ''; ui.erreur = ''; await traiterReception(); rendre(); window.scrollTo(0, 0); });
 
 // Hors ligne : seulement une fois en ligne, jamais pendant le développement sur l'ordinateur.
 if ('serviceWorker' in navigator && !['localhost', '127.0.0.1'].includes(location.hostname)) {

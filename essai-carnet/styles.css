@@ -497,3 +497,14 @@ a.bouton { text-decoration: none; box-sizing: border-box; }
 .legende-semaine { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; font-size: 0.8rem; color: var(--encre-douce); }
 .legende-semaine span { display: inline-flex; align-items: center; gap: 6px; }
 .legende-semaine .rond { width: 14px; height: 14px; border-width: 1.5px; }
+
+/* Version 17 : mes médecins à toucher, fiche commencée à reprendre */
+.choix-medecin label { align-items: flex-start; line-height: 1.25; }
+.choix-medecin label small { font-weight: 500; color: var(--encre-pale); }
+.choix-medecin input { margin-top: 2px; }
+.ajout-medecin { margin-top: 10px; }
+.ajout-medecin > summary { cursor: pointer; color: var(--primaire); font-weight: 700; display: inline-flex; align-items: center; gap: 6px; list-style: none; }
+.ajout-medecin > summary::-webkit-details-marker { display: none; }
+.ajout-medecin[open] > summary { margin-bottom: 10px; }
+.ajout-medecin .bouton { margin-top: 10px; }
+.carte-brouillon { border: 2px solid var(--ambre); }
