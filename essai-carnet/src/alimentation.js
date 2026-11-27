@@ -26,7 +26,7 @@ export const SOURCES = {
 };
 
 /** Les champs de la fiche qui parlent d'alimentation : affichés en premier, tels qu'écrits. */
-export const CHAMPS_DE_LA_FICHE = ['sel_limite', 'sel', 'boissons_limite', 'boissons', 'alcool', 'interactions_a_eviter', 'suivi_dietetique'];
+export const CHAMPS_DE_LA_FICHE = ['sel_limite', 'boissons_limite', 'alcool', 'suivi_dietetique'];
 
 export const GROUPES = [
   {

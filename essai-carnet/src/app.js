@@ -1,7 +1,7 @@
 // Écrans du carnet. Règle fondatrice : l'application ne décide jamais.
 // Elle affiche ce qui a été écrit, par qui et quand ; elle ne juge aucune valeur et ne calcule aucun seuil.
 
-import { THEMES, CHAMPS, MOMENTS } from './modele.js';
+import { THEMES, CHAMPS, MOMENTS, CHAMP_OUBLI } from './modele.js';
 import * as store from './store.js';
 import { geometrie } from './courbe.js';
 import * as depot from './photos.js';
@@ -353,7 +353,7 @@ function feuilleFicheRecue(id) {
   const f = (etat.fichesRecues ?? []).find((x) => x.id === id);
   const tete = `<div class="feuille-tete"><h2>Fiche reçue</h2><button class="bouton-rond" data-action="fermer" aria-label="Fermer">${ic('croix', 18)}</button></div>`;
   if (!f) return `${tete}<p class="vide">Cette fiche n’existe plus dans le carnet.</p>`;
-  const parTheme = THEMES.map((th) => ({ th, lignes: f.consignes.filter((c) => CHAMPS.get(c.id)?.theme === th.id) })).filter((x) => x.lignes.length);
+  const parTheme = [...THEMES, { id: 'medicaments', titre: 'Prise des médicaments', icone: 'medicaments', couleur: 'bleu' }].map((th) => ({ th, lignes: f.consignes.filter((c) => CHAMPS.get(c.id)?.theme === th.id) })).filter((x) => x.lignes.length);
   const themes = parTheme.map(({ th, lignes }) => `<section class="carte">
       <div class="carte-tete"><span class="pastille ${th.couleur}">${ic(th.icone)}</span><h2>${ech(th.titre)}</h2></div>
       <ul class="liste">${lignes.map(({ id: c, valeur }) => `<li class="ligne"><span class="corps"><span class="libelle">${ech(CHAMPS.get(c).libelle)}</span><br><span class="valeur">${avecUnite(CHAMPS.get(c), valeur)}</span></span></li>`).join('')}</ul>
@@ -476,7 +476,6 @@ function carteBoissons() {
   const bu = store.totalBuMl(etat, jour);
   const boissons = store.boissonsDuJour(etat, jour);
   const ecrit = store.consigneCourante(etat, 'boissons_limite');
-  const precision = parole('boissons');
 
   const verres = `${choixEau()}<div class="recipients">${RECIPIENTS.map((r) => `<button class="recipient" data-action="boire:${r.ml}"><b>${r.libelle}</b><span>${r.ml} mL</span></button>`).join('')}</div>
     <form class="saisie-rapide" data-form="boisson" style="margin-top:10px">
@@ -518,7 +517,6 @@ function carteBoissons() {
   return `<section class="carte">
     <div class="carte-tete"><span class="pastille bleu">${ic('goutte')}</span><h2>Ma bouteille du jour</h2>${limite !== null ? '<button class="lien" data-action="ouvrir:consigne:boissons_limite">Modifier</button>' : ''}</div>
     ${corps}
-    ${limite === null ? '' : precision ? `<div style="margin-top:14px">${precision}</div>` : '<p class="discret" style="margin-top:12px">Ce qui compte comme boisson (soupe, café, yaourt…) : c’est au médecin de le dire. Vous pouvez noter sa réponse juste en dessous.</p>'}
     ${limite === null ? '' : '<p class="discret" style="margin-top:8px">Les tailles de verre sont des tailles courantes : utilisez « Autre quantité » pour les vôtres. La bouteille repart pleine toute seule chaque matin.</p>'}
   </section>`;
 }
@@ -527,10 +525,6 @@ function vueLiquides() {
   return `<h1 class="titre-page">Liquides</h1>
     <p class="sous-titre">Ma limite de liquide du jour : la bouteille se vide à chaque boisson notée.</p>
     ${bandeauExemple()}${carteBoissons()}
-    <section class="carte">
-      <div class="carte-tete"><span class="pastille bleu">${ic('fiche')}</span><h2>Ce que mon médecin a précisé</h2></div>
-      <ul class="liste">${ligneConsigne('boissons')}</ul>
-    </section>
     ${mention()}`;
 }
 
@@ -803,6 +797,7 @@ function vueRemplir() {
       <input type="hidden" name="nbMeds" value="${lignes.length}">
       <div class="bloc">${lignes.map(ligneMedRemplir).join('')}</div>
       <button class="bouton secondaire large" type="button" data-action="ajouter-ligne-med" style="margin-top:12px">${ic('plus', 18)} Ajouter un médicament</button>
+      <div class="bloc" style="margin-top:16px">${champRemplir(CHAMP_OUBLI, valeurDe(CHAMP_OUBLI.id))}</div>
     </details>`;
 
   return `<h1 class="titre-page">Remplir ma fiche</h1>
@@ -867,7 +862,7 @@ function vuePoids() {
 
     <section class="carte">
       <div class="carte-tete"><span class="pastille ambre">${ic('fiche')}</span><h2>Ce que le médecin a écrit</h2></div>
-      <ul class="liste">${ligneConsigne('poids_reference')}${ligneConsigne('consigne_poids')}</ul>
+      <ul class="liste">${ligneConsigne('poids_reference')}${ligneConsigne('automesure_poids')}${ligneConsigne('consigne_poids')}</ul>
       <p class="discret" style="margin-top:8px">Recopiez la phrase du médecin mot pour mot. Le carnet l’affiche, il ne l’interprète pas.</p>
     </section>
 
@@ -1038,7 +1033,7 @@ function feuilleAliment(code) {
 
 function vueAlimentation() {
   // Les deux limites chiffrées ont leur propre place (ici en tête, et sur l'écran Liquides).
-  const maFiche = CHAMPS_DE_LA_FICHE.filter((id) => !['sel_limite', 'boissons_limite', 'boissons'].includes(id)).map((id) => {
+  const maFiche = CHAMPS_DE_LA_FICHE.filter((id) => !['sel_limite', 'boissons_limite'].includes(id)).map((id) => {
     const c = CHAMPS.get(id);
     const v = store.consigneCourante(etat, id);
     return `<li><button class="ligne" data-action="ouvrir:consigne:${id}"><span class="corps">
@@ -1204,8 +1199,6 @@ function feuilleRdv() {
 
 function feuilleUrgence() {
   const service = store.consigneCourante(etat, 'numero_service');
-  const choc = parole('un_choc_sans_malaise');
-  const chocs = parole('chocs_repetes');
   return `<div class="feuille-tete"><h2>En cas d’urgence</h2><button class="bouton-rond" data-action="fermer" aria-label="Fermer">${ic('croix', 18)}</button></div>
     <div class="bloc">
       <a class="urgence-numero" href="tel:15">${ic('telephone', 28)}<div><strong>15</strong><br><span>SAMU, urgence médicale</span></div></a>
@@ -1214,8 +1207,6 @@ function feuilleUrgence() {
         <div class="carte-tete"><span class="pastille ambre">${ic('telephone')}</span><h2>Mon service</h2></div>
         ${service ? `<div class="valeur" style="font-weight:700;font-size:1.2rem">${ech(service.valeur)}</div>` : '<p class="vide">Numéro du service non renseigné sur la fiche.</p>'}
       </section>
-      ${choc || chocs ? `<section class="carte"><div class="carte-tete"><span class="pastille corail">${ic('dispositif')}</span><h2>Défibrillateur : ce que le service a écrit</h2></div>
-        <div class="bloc">${choc ? `<div><p class="libelle discret">Un choc, sans malaise</p>${choc}</div>` : ''}${chocs ? `<div><p class="libelle discret">Plusieurs chocs</p>${chocs}</div>` : ''}</div></section>` : ''}
       <p class="mention">Le carnet ne juge pas de l’urgence. Dans le doute, appelez.</p>
     </div>`;
 }
@@ -1556,6 +1547,28 @@ document.addEventListener('change', async (evenement) => {
 });
 
 // Une famille d'aliments ouverte le reste quand l'écran est redessiné.
+// Version 19 : sur le téléphone, toucher une case (Matin, Midi, Soir…) juste après avoir tapé un nom ferme le clavier ;
+// la page change de hauteur et la case touchée partait hors de l'écran. On la remet là où le doigt l'a touchée,
+// pendant une seconde seulement, pour ne jamais gêner le défilement fait à la main.
+let caseTenue = null;
+function tenirLaCase() {
+  if (!caseTenue || Date.now() > caseTenue.jusqua) { caseTenue = null; return; }
+  const el = caseTenue.el.isConnected ? caseTenue.el
+    : document.querySelector(`[name="${CSS.escape(caseTenue.nom)}"][value="${CSS.escape(caseTenue.valeur)}"]`)?.closest('label');
+  if (!el) return;
+  const ecart = el.getBoundingClientRect().top - caseTenue.haut;
+  if (Math.abs(ecart) > 2) window.scrollBy(0, ecart);
+}
+document.addEventListener('pointerdown', (evenement) => {
+  const coche = evenement.target.closest?.('form label');
+  const caseACocher = coche?.querySelector('input[type="checkbox"], input[type="radio"]');
+  if (!caseACocher?.name) return;
+  caseTenue = { el: coche, nom: caseACocher.name, valeur: caseACocher.value, haut: coche.getBoundingClientRect().top, jusqua: Date.now() + 1000 };
+}, true);
+window.visualViewport?.addEventListener('resize', tenirLaCase);
+window.addEventListener('resize', tenirLaCase);
+document.addEventListener('change', () => { if (caseTenue) { requestAnimationFrame(tenirLaCase); setTimeout(tenirLaCase, 350); setTimeout(tenirLaCase, 700); } }, true);
+
 document.addEventListener('toggle', (evenement) => {
   const theme = evenement.target.closest?.('[data-theme-remplir]');
   if (theme && evenement.target === theme) { if (theme.open) ui.themesOuverts.add(theme.dataset.themeRemplir); else ui.themesOuverts.delete(theme.dataset.themeRemplir); return; }

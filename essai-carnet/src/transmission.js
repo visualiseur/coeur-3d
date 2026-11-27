@@ -58,7 +58,7 @@ export function verifierColis(colis) {
   for (const [id, brut] of Object.entries(colis.c)) {
     const valeur = texte(brut);
     if (!CHAMPS.has(id)) throw new Error(`Consigne inconnue de ce carnet : ${id}`);
-    if (!valeur) continue;
+    if (!valeur || CHAMPS.get(id).retire) continue; // champ retiré en version 19 : un ancien code reste lisible sans lui
     if (valeur.length > LONGUEUR_MAX) throw new Error(`Une consigne est trop longue (${CHAMPS.get(id).libelle}).`);
     consignes.push({ id, valeur });
   }

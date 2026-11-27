@@ -25,6 +25,7 @@ const nouvelId = (prefixe, maintenant) => `${prefixe}-${Date.parse(maintenant) |
 /** Ajoute une version à une consigne. L'ancienne version est conservée. */
 export function ecrireConsigne(etat, id, saisie, maintenant) {
   if (!CHAMPS.has(id)) throw new Error(`Champ inconnu de la fiche : ${id}`);
+  if (CHAMPS.get(id).retire) throw new Error(`Ce champ a été retiré de la fiche : ${CHAMPS.get(id).libelle}`);
   const valeur = texte(saisie.valeur);
   if (!valeur) throw new Error('La valeur est vide.');
   const version = {
@@ -68,7 +69,7 @@ export function remplirFiche(etat, { auteur, date, consignes, medicaments = [] }
   let e = etat;
   const ecrits = [];
   for (const [id, brut] of Object.entries(consignes ?? {})) {
-    if (!CHAMPS.has(id)) continue;
+    if (!CHAMPS.has(id) || CHAMPS.get(id).retire) continue;
     const valeur = texte(brut);
     if (!valeur || valeur === consigneCourante(e, id)?.valeur) continue;
     const simple = CHAMPS.get(id).simple;
@@ -92,7 +93,11 @@ export function remplirFiche(etat, { auteur, date, consignes, medicaments = [] }
       const remplie = nom || texte(ligne.dose) || texte(ligne.aQuoiCaSert) || MOMENTS.some((m) => ligne.moments?.[m.id]);
       if (!remplie) continue;
       if (!nom) throw new Error('Une ligne de médicament n’a pas de nom.');
-      if (medicamentsEnCours(e).some((m) => nomCompare(m.nom) === nomCompare(nom))) throw new Error(`${nom} est déjà dans votre liste de médicaments : changez plutôt sa ligne.`);
+      // Version 19 : un même médicament peut avoir deux lignes à deux dosages (Bisoprolol 1,25 mg le matin, 2,5 mg le soir).
+      // Seule une ligne au même nom ET au même dosage est un doublon.
+      if (medicamentsEnCours(e).some((m) => nomCompare(m.nom) === nomCompare(nom) && doseComparee(m.dose) === doseComparee(ligne.dose))) {
+        throw new Error(`${nom}${texte(ligne.dose) ? ` ${texte(ligne.dose)}` : ''} est déjà dans votre liste de médicaments, au même dosage : changez plutôt sa ligne.`);
+      }
       e = ajouterMedicament(e, { nom, dose: ligne.dose, moments: ligne.moments, aQuoiCaSert: ligne.aQuoiCaSert, ecritPar: auteur }, maintenant);
       meds.push({ nom, type: 'nouveau' });
     }
@@ -121,7 +126,7 @@ export function estAReevaluer(version, aujourdhui) {
 export function consignesAReevaluer(etat, aujourdhui) {
   return Object.keys(etat.consignes)
     .map((id) => ({ id, version: consigneCourante(etat, id) }))
-    .filter((c) => CHAMPS.has(c.id) && estAReevaluer(c.version, aujourdhui));
+    .filter((c) => CHAMPS.has(c.id) && !CHAMPS.get(c.id).retire && estAReevaluer(c.version, aujourdhui));
 }
 
 // ---------- Poids ----------
@@ -195,6 +200,19 @@ export const nomCompare = (nom) => texte(nom).toLowerCase().normalize('NFD').rep
 const doseComparee = (dose) => texte(dose).toLowerCase().replace(/\s+/g, '').replace(',', '.');
 
 /**
+ * La ligne du carnet qui correspond à un médicament transmis. Version 19 : un même médicament peut avoir
+ * plusieurs lignes (deux dosages). Parmi les lignes au même nom pas encore citées : celle au même dosage,
+ * sinon celle aux mêmes moments, sinon la seule s'il n'y en a qu'une. S'il en reste plusieurs, aucune n'est
+ * choisie au hasard : le médicament transmis apparaît comme nouveau.
+ */
+function ligneDuCarnet(enCours, recu, cites) {
+  const memeNom = enCours.filter((m) => !cites.has(m.id) && nomCompare(m.nom) === nomCompare(recu.nom));
+  return memeNom.find((m) => doseComparee(m.dose) === doseComparee(recu.dose))
+    ?? memeNom.find((m) => JSON.stringify(m.moments) === JSON.stringify(recu.moments))
+    ?? (memeNom.length === 1 ? memeNom[0] : null);
+}
+
+/**
  * Ce que des médicaments transmis par un soignant changeraient dans le carnet, sans rien changer.
  * Un médicament est reconnu par son nom, écrit pareil (majuscules, accents et espaces ignorés) ; rien n'est deviné :
  * un même produit sous un autre nom (marque et générique) apparaît comme nouveau.
@@ -205,7 +223,7 @@ export function comparerMedicaments(etat, recus) {
   const enCours = medicamentsEnCours(etat);
   const cites = new Set();
   const lignes = recus.map((recu) => {
-    const actuel = enCours.find((m) => nomCompare(m.nom) === nomCompare(recu.nom)) ?? null;
+    const actuel = ligneDuCarnet(enCours, recu, cites);
     if (actuel) cites.add(actuel.id);
     if (recu.arreter) return { type: actuel ? 'arret' : 'arret-introuvable', recu, actuel };
     if (!actuel) return { type: 'nouveau', recu, actuel };
@@ -659,7 +677,6 @@ export function etatExemple(aujourdhui) {
   consigne('sel_limite', '6');
   consigne('poids_reference', '78');
   consigne('boissons_limite', '1,5');
-  consigne('boissons', 'Exemple de phrase écrite par le médecin : « Tout compte : eau, café, soupe, yaourts. »');
   consigne('consigne_poids', 'Exemple de phrase écrite par le médecin : « Prévenir le service en cas de prise de 2 kg en 3 jours. »');
   consigne('en_cas_d_oubli', 'Exemple de phrase écrite par le médecin : « Ne pas doubler la prise suivante. En cas de doute, appeler la pharmacie. »');
   e = ecrireConsigne(e, 'numero_service', { valeur: '00 00 00 00 00 (exemple)' }, quand);

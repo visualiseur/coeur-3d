@@ -40,34 +40,12 @@ export const THEMES = [
     id: 'alimentation', titre: 'Alimentation et poids', icone: 'alimentation', couleur: 'ambre',
     champs: [
       { id: 'sel_limite', libelle: 'Limite de sel par jour', unite: 'g', aide: 'En grammes de sel (pas de sodium), comme le médecin l’a écrit. Exemple : 6.' },
-      { id: 'sel', libelle: 'Sel : précisions', long: true, aide: 'La phrase du médecin, s’il a ajouté quelque chose.' },
-      { id: 'boissons_limite', libelle: 'Limite de boissons par jour', unite: 'L', aide: 'En litres, comme le médecin l’a écrit. Exemple : 1,5. Sert à remplir la bouteille du jour.' },
-      { id: 'boissons', libelle: 'Boissons : ce qui compte, précisions', long: true, aide: 'La phrase du médecin : ce qui compte comme boisson (soupe, café, yaourt…), cas particuliers.' },
+      { id: 'boissons_limite', libelle: 'Limite de boissons par jour', unite: 'L', aide: 'En litres, comme le médecin l’a écrit (thé, café et soupe). Exemple : 1,5. Sert à remplir la bouteille du jour.' },
       { id: 'alcool', libelle: 'Alcool' },
-      { id: 'interactions_a_eviter', libelle: 'Aliments ou produits à éviter', long: true },
       { id: 'poids_reference', libelle: 'Poids de référence', unite: 'kg' },
+      { id: 'automesure_poids', libelle: 'Pesée' },
       { id: 'consigne_poids', libelle: 'Consigne de surveillance du poids', long: true, aide: 'La phrase du médecin, mot pour mot.' },
       { id: 'suivi_dietetique', libelle: 'Suivi diététique' },
-    ],
-  },
-  {
-    id: 'traitements', titre: 'Traitements', icone: 'medicaments', couleur: 'bleu',
-    champs: [
-      { id: 'en_cas_d_oubli', libelle: 'En cas d’oubli d’une prise', long: true, aide: 'La phrase du médecin ou du pharmacien, mot pour mot.' },
-      { id: 'automesure_tension', libelle: 'Automesure de la tension', long: true },
-      { id: 'automesure_poids', libelle: 'Pesée' },
-    ],
-  },
-  {
-    id: 'dispositif', titre: 'Dispositif implanté', icone: 'dispositif', couleur: 'corail',
-    champs: [
-      { id: 'dispositif_modele', libelle: 'Modèle' },
-      { id: 'dispositif_date_pose', libelle: 'Date de pose' },
-      { id: 'dispositif_centre', libelle: 'Centre de suivi' },
-      { id: 'dispositif_telesurveillance', libelle: 'Télésurveillance' },
-      { id: 'un_choc_sans_malaise', libelle: 'Un choc, sans malaise : que faire', long: true, aide: 'La phrase du service, mot pour mot.' },
-      { id: 'chocs_repetes', libelle: 'Plusieurs chocs : que faire', long: true, aide: 'La phrase du service, mot pour mot.' },
-      { id: 'dispositif_a_eviter', libelle: 'À éviter', long: true },
     ],
   },
   {
@@ -84,7 +62,6 @@ export const THEMES = [
       { id: 'reprise_travail', libelle: 'Reprise du travail', long: true },
       { id: 'vie_intime', libelle: 'Vie intime', long: true },
       { id: 'bain_chaud', libelle: 'Bain chaud, sauna, hammam' },
-      { id: 'tabac_accompagnement', libelle: 'Tabac : accompagnement prévu', long: true },
     ],
   },
   {
@@ -99,7 +76,33 @@ export const THEMES = [
   },
 ];
 
-export const CHAMPS = new Map(THEMES.flatMap((t) => t.champs.map((c) => [c.id, { ...c, theme: t.id }])));
+// Version 19 : « En cas d'oubli d'une prise » quitte le thème Traitements (supprimé) pour la partie Médicaments
+// de la fiche (Remplir ma fiche, page soignant, écran Médicaments). Même identifiant : rien n'est perdu.
+export const CHAMP_OUBLI = { id: 'en_cas_d_oubli', libelle: 'En cas d’oubli d’une prise', long: true, aide: 'La phrase du médecin ou du pharmacien, mot pour mot.' };
+
+// Version 19 : champs retirés de la fiche (dispositif implanté et tabac : à repenser à part).
+// Ils ne s'affichent plus et ne s'écrivent plus, mais restent connus : ce qui était déjà écrit reste dans le carnet,
+// une ancienne sauvegarde s'ouvre, et un ancien code soignant qui en contient est lu sans eux.
+export const CHAMPS_RETIRES = [
+  { id: 'sel', libelle: 'Sel : précisions' },
+  { id: 'boissons', libelle: 'Boissons : ce qui compte, précisions' },
+  { id: 'interactions_a_eviter', libelle: 'Aliments ou produits à éviter' },
+  { id: 'automesure_tension', libelle: 'Automesure de la tension' },
+  { id: 'dispositif_modele', libelle: 'Dispositif : modèle' },
+  { id: 'dispositif_date_pose', libelle: 'Dispositif : date de pose' },
+  { id: 'dispositif_centre', libelle: 'Dispositif : centre de suivi' },
+  { id: 'dispositif_telesurveillance', libelle: 'Dispositif : télésurveillance' },
+  { id: 'un_choc_sans_malaise', libelle: 'Un choc, sans malaise : que faire' },
+  { id: 'chocs_repetes', libelle: 'Plusieurs chocs : que faire' },
+  { id: 'dispositif_a_eviter', libelle: 'Dispositif : à éviter' },
+  { id: 'tabac_accompagnement', libelle: 'Tabac : accompagnement prévu' },
+];
+
+export const CHAMPS = new Map([
+  ...THEMES.flatMap((t) => t.champs.map((c) => [c.id, { ...c, theme: t.id }])),
+  [CHAMP_OUBLI.id, { ...CHAMP_OUBLI, theme: 'medicaments' }],
+  ...CHAMPS_RETIRES.map((c) => [c.id, { ...c, theme: null, retire: true }]),
+]);
 
 export const MOMENTS = [
   { id: 'matin', libelle: 'Matin' },

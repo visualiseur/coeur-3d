@@ -97,6 +97,7 @@ function rendre() {
           <p class="discret">Indiquez les médicaments à ajouter ou dont la dose change, avec leur nom tel qu’il est écrit sur l’ordonnance. Pour en retirer un, écrivez son nom et cochez « Arrêter ». Les médicaments que vous ne citez pas restent inchangés dans le carnet.</p>
           <div class="bloc">${ui.medicaments.map(ligneMedicament).join('')}</div>
           <button class="bouton secondaire large" type="button" data-action="ajouter-med" style="margin-top:12px">${ic('plus', 18)} Ajouter un médicament</button>
+          <div class="bloc" style="margin-top:16px">${champ('en_cas_d_oubli')}</div>
         </section>
         <h2 class="titre-section">La fiche de sortie</h2>
         ${CHAMPS_SOIGNANT.map(theme).join('')}
