@@ -80,7 +80,8 @@ export const THEMES = [
 // de la fiche (Remplir ma fiche, page soignant, écran Médicaments). Même identifiant : rien n'est perdu.
 export const CHAMP_OUBLI = { id: 'en_cas_d_oubli', libelle: 'En cas d’oubli d’une prise', long: true, aide: 'La phrase du médecin ou du pharmacien, mot pour mot.' };
 
-// Version 19 : champs retirés de la fiche (dispositif implanté et tabac : à repenser à part).
+// Version 19 : champs retirés de la fiche. Le dispositif implanté est revenu à part en version 21 (DISPOSITIF) ;
+// le tabac est devenu un suivi quotidien (store.noterTabac).
 // Ils ne s'affichent plus et ne s'écrivent plus, mais restent connus : ce qui était déjà écrit reste dans le carnet,
 // une ancienne sauvegarde s'ouvre, et un ancien code soignant qui en contient est lu sans eux.
 export const CHAMPS_RETIRES = [
@@ -88,18 +89,28 @@ export const CHAMPS_RETIRES = [
   { id: 'boissons', libelle: 'Boissons : ce qui compte, précisions' },
   { id: 'interactions_a_eviter', libelle: 'Aliments ou produits à éviter' },
   { id: 'automesure_tension', libelle: 'Automesure de la tension' },
-  { id: 'dispositif_modele', libelle: 'Dispositif : modèle' },
-  { id: 'dispositif_date_pose', libelle: 'Dispositif : date de pose' },
-  { id: 'dispositif_centre', libelle: 'Dispositif : centre de suivi' },
-  { id: 'dispositif_telesurveillance', libelle: 'Dispositif : télésurveillance' },
-  { id: 'un_choc_sans_malaise', libelle: 'Un choc, sans malaise : que faire' },
-  { id: 'chocs_repetes', libelle: 'Plusieurs chocs : que faire' },
-  { id: 'dispositif_a_eviter', libelle: 'Dispositif : à éviter' },
   { id: 'tabac_accompagnement', libelle: 'Tabac : accompagnement prévu' },
 ];
 
+// Version 21 : le dispositif implanté, à part de la fiche de sortie. Ce n'est pas le service de réadaptation qui le suit,
+// mais le centre de suivi du dispositif : il n'est ni dans « Remplir ma fiche » ni sur la page soignant.
+// Mêmes identifiants qu'avant la version 19 : ce qui avait été écrit réapparaît.
+export const DISPOSITIF = {
+  id: 'dispositif', titre: 'Mon dispositif implanté', icone: 'dispositif', couleur: 'corail',
+  champs: [
+    { id: 'dispositif_modele', libelle: 'Modèle', aide: 'Comme sur la carte de porteur.' },
+    { id: 'dispositif_date_pose', libelle: 'Date de pose' },
+    { id: 'dispositif_centre', libelle: 'Centre de suivi', aide: 'Le nom, et le numéro de téléphone si vous l’avez.' },
+    { id: 'dispositif_prochain_controle', libelle: 'Prochain contrôle' },
+    { id: 'dispositif_telesurveillance', libelle: 'Télésurveillance' },
+    { id: 'un_choc_sans_malaise', libelle: 'Un choc, sans malaise : que faire', long: true, aide: 'La phrase du centre de suivi, mot pour mot.' },
+    { id: 'chocs_repetes', libelle: 'Plusieurs chocs : que faire', long: true, aide: 'La phrase du centre de suivi, mot pour mot.' },
+    { id: 'dispositif_a_eviter', libelle: 'À éviter', long: true },
+  ],
+};
+
 export const CHAMPS = new Map([
-  ...THEMES.flatMap((t) => t.champs.map((c) => [c.id, { ...c, theme: t.id }])),
+  ...[...THEMES, DISPOSITIF].flatMap((t) => t.champs.map((c) => [c.id, { ...c, theme: t.id }])),
   [CHAMP_OUBLI.id, { ...CHAMP_OUBLI, theme: 'medicaments' }],
   ...CHAMPS_RETIRES.map((c) => [c.id, { ...c, theme: null, retire: true }]),
 ]);

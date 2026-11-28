@@ -515,3 +515,23 @@ a.bouton { text-decoration: none; box-sizing: border-box; }
 .ajout-medecin[open] > summary { margin-bottom: 10px; }
 .ajout-medecin .bouton { margin-top: 10px; }
 .carte-brouillon { border: 2px solid var(--ambre); }
+
+/* ---------- Tabac (version 21) ---------- */
+.compteur-tabac { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 12px; }
+.bouton-rond.grand { width: 56px; height: 56px; font-size: 1.7rem; font-weight: 700; color: var(--encre); }
+.bouton-rond.grand.plein { background: var(--ambre); border-color: var(--ambre); color: #fff; }
+.bouton-rond.grand:disabled { opacity: 0.35; }
+.compte-tabac { flex: 1; text-align: center; display: grid; }
+.compte-tabac b { font-size: 2.4rem; line-height: 1; }
+.compte-tabac span { font-size: 0.9rem; color: var(--encre-douce); }
+.rond.tabac { background: var(--ambre-clair); border: 2px solid var(--ambre-clair); color: var(--encre); font-weight: 700; font-size: 0.85rem; }
+.rond.tabac i { color: var(--encre-douce); border-color: var(--encre-pale); }
+.lien-discret { background: none; border: 0; padding: 8px 0 0; color: var(--encre-douce); font-weight: 600; text-decoration: underline; cursor: pointer; font-size: 0.9rem; }
+.lien-carte.discrete { opacity: 0.85; }
+
+/* ---------- Mes documents (version 21) ---------- */
+.icone-doc { color: var(--bleu); flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--bleu-clair); }
+.liste-simple { margin: 0; padding-left: 18px; display: grid; gap: 8px; font-size: 0.93rem; color: var(--encre-douce); }
+.apercu-document { margin-top: 12px; }
+.lecteur-pdf { width: 100%; height: 70vh; border: 1px solid var(--trait); border-radius: 12px; background: #fff; }
+a.bouton { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }

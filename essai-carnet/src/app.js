@@ -1,10 +1,11 @@
 // Écrans du carnet. Règle fondatrice : l'application ne décide jamais.
 // Elle affiche ce qui a été écrit, par qui et quand ; elle ne juge aucune valeur et ne calcule aucun seuil.
 
-import { THEMES, CHAMPS, MOMENTS, CHAMP_OUBLI } from './modele.js';
+import { THEMES, CHAMPS, MOMENTS, CHAMP_OUBLI, DISPOSITIF } from './modele.js';
 import * as store from './store.js';
 import { geometrie } from './courbe.js';
 import * as depot from './photos.js';
+import * as coffre from './documents.js';
 import { GROUPES, POUR_LE_GOUT, SOURCES, CHAMPS_DE_LA_FICHE, RELU_LE } from './alimentation.js';
 import { FAMILLES_SEL, VERSION_CIQUAL } from './sel-aliments.js';
 import { EAUX, VERSION_CIQUAL_EAUX } from './sel-eaux.js';
@@ -24,7 +25,8 @@ const VUES = [
 // « Ma fiche » n'est plus dans la barre du bas : on y va depuis l'accueil.
 // « soignant » : dans le carnet, les fiches reçues des soignants. Le soignant, lui, remplit soignant.html (versions 13 et 14).
 // « remplir » : la fiche de sortie recopiée en une fois (version 17).
-const ROUTES = [...VUES.map((v) => v.id), 'fiche', 'soignant', 'remplir'];
+// « documents » : le coffre à documents (version 21).
+const ROUTES = [...VUES.map((v) => v.id), 'fiche', 'soignant', 'remplir', 'documents'];
 
 // ---------- État ----------
 
@@ -137,6 +139,18 @@ function vueAujourdhui() {
       <span class="chevron">${ic('chevron', 18)}</span>
     </button>`;
 
+  const nbDocs = (etat.documents ?? []).length;
+  const lienDocuments = `<button class="carte lien-carte" data-action="nav:documents">
+      <span class="pastille bleu">${ic('dossier')}</span>
+      <span class="corps"><b>Mes documents</b><br><span class="discret">${nbDocs ? `${nbDocs} document${nbDocs > 1 ? 's' : ''} rangé${nbDocs > 1 ? 's' : ''} sur ce téléphone` : 'Ordonnances, prises de sang, comptes rendus'}</span></span>
+      <span class="chevron">${ic('chevron', 18)}</span>
+    </button>`;
+  const lienTabac = etat.tabac?.actif ? '' : `<button class="carte lien-carte discrete" data-action="tabac-activer">
+      <span class="pastille ambre">${ic('tabac')}</span>
+      <span class="corps"><b>Suivre mon tabac</b><br><span class="discret">Pour qui fume : un compteur par jour, sur l’accueil</span></span>
+      <span class="chevron">${ic('plus', 18)}</span>
+    </button>`;
+
   const nbFiches = (etat.fichesRecues ?? []).length;
   const lienSoignant = `<button class="carte lien-carte" data-action="nav:soignant">
       <span class="pastille vert">${ic('fiche')}</span>
@@ -154,7 +168,7 @@ function vueAujourdhui() {
           <button class="bouton secondaire" data-action="exemple">Voir un exemple</button>
         </div>
       </section>
-      ${lienSoignant}
+      ${lienDocuments}${lienSoignant}
       ${mention()}`;
   }
 
@@ -215,7 +229,39 @@ function vueAujourdhui() {
         </span><span class="chevron">${ic('chevron', 18)}</span></button></li>`).join('')}</ul>
     </section>` : '';
 
-  return `${bandeau}${carteBrouillon()}${bandeauReception()}${bandeauExemple()}${tuilesAccueil()}${cartePoids}${carteMeds}${carteRdv}${carteRevoir}${lienFiche}${lienSoignant}${mention()}`;
+  return `${bandeau}${carteBrouillon()}${bandeauReception()}${bandeauExemple()}${tuilesAccueil()}${cartePoids}${carteMeds}${carteTabac()}${carteRdv}${carteRevoir}${lienFiche}${lienDocuments}${lienSoignant}${lienTabac}${mention()}`;
+}
+
+// ---------- Tabac : suivi quotidien (version 21) ----------
+// Sur l'accueil seulement si la personne l'a demandé. Aucun objectif, aucune couleur qui juge : on compte, c'est tout.
+
+function carteTabac() {
+  if (!etat.tabac?.actif) return '';
+  const jour = aujourdhui();
+  const note = store.tabacDuJour(etat, jour);
+  const semaine = store.semaineDeTabac(etat, jour);
+  const notes = semaine.filter((j) => j.note);
+  const total = notes.reduce((n, j) => n + j.note.cigarettes, 0);
+  const ronds = semaine.map((j, i) => {
+    const dit = j.note ? `${j.note.cigarettes} cigarette${j.note.cigarettes > 1 ? 's' : ''}${j.note.substitut ? ', substitut' : ''}` : 'rien de noté';
+    return `<div class="jour-semaine${j.date === jour ? ' aujourdhui' : ''}${j.date > jour ? ' futur' : ''}"><span class="lettre">${JOURS_COURTS[i]}</span>
+      <span class="rond ${j.note ? 'tabac' : 'vide'}" title="${dateCourte(j.date)} : ${dit}" aria-label="${ech(dateLongue(j.date))} : ${dit}">${j.note ? j.note.cigarettes : ''}${j.note?.substitut ? '<i>S</i>' : ''}</span></div>`;
+  }).join('');
+  return `<section class="carte">
+      <div class="carte-tete"><span class="pastille ambre">${ic('tabac')}</span><h2>Mon tabac aujourd’hui</h2></div>
+      <div class="compteur-tabac">
+        <button class="bouton-rond grand" data-action="tabac:-1" aria-label="Retirer une cigarette" ${note && note.cigarettes > 0 ? '' : 'disabled'}>–</button>
+        <div class="compte-tabac">${note ? `<b>${note.cigarettes}</b><span>cigarette${note.cigarettes > 1 ? 's' : ''}</span>` : '<span class="vide">Rien de noté</span>'}</div>
+        <button class="bouton-rond grand plein" data-action="tabac:1" aria-label="Ajouter une cigarette">+</button>
+      </div>
+      ${note ? '' : '<button class="bouton secondaire large" data-action="tabac:0">Aucune aujourd’hui</button>'}
+      <button class="prise${note?.substitut ? ' fait' : ''}" data-action="tabac-substitut" aria-pressed="${Boolean(note?.substitut)}">
+        <span class="case">${ic('coche', 18)}</span><span><span class="nom">Substitut aujourd’hui</span><br><span class="dose">patch, gomme, pastille, vapoteuse…</span></span>
+      </button>
+      <div class="semaine-bloc" style="margin-top:14px"><div class="semaine-titre"><span>Cette semaine</span><b>${notes.length ? `${total} cigarette${total > 1 ? "s" : ""} · ${notes.length} jour${notes.length > 1 ? 's' : ''} noté${notes.length > 1 ? 's' : ''}` : 'rien de noté'}</b></div><div class="semaine">${ronds}</div></div>
+      <p class="discret" style="margin-top:10px">Un jour vide veut dire « rien de noté », pas « zéro ». S = substitut. Le carnet ne fixe aucun objectif : parlez-en à votre médecin ou à un tabacologue (Tabac info service : 39 89).</p>
+      <button class="lien-discret" data-action="tabac-masquer">Ne plus afficher sur l’accueil</button>
+    </section>`;
 }
 
 /** Les priorités, toujours en haut de l'accueil : poids, alimentation, liquides, et les séances (version 16). */
@@ -356,7 +402,7 @@ function feuilleFicheRecue(id) {
   const f = (etat.fichesRecues ?? []).find((x) => x.id === id);
   const tete = `<div class="feuille-tete"><h2>Fiche reçue</h2><button class="bouton-rond" data-action="fermer" aria-label="Fermer">${ic('croix', 18)}</button></div>`;
   if (!f) return `${tete}<p class="vide">Cette fiche n’existe plus dans le carnet.</p>`;
-  const parTheme = [...THEMES, { id: 'medicaments', titre: 'Prise des médicaments', icone: 'medicaments', couleur: 'bleu' }].map((th) => ({ th, lignes: f.consignes.filter((c) => CHAMPS.get(c.id)?.theme === th.id) })).filter((x) => x.lignes.length);
+  const parTheme = [...THEMES, DISPOSITIF, { id: 'medicaments', titre: 'Prise des médicaments', icone: 'medicaments', couleur: 'bleu' }].map((th) => ({ th, lignes: f.consignes.filter((c) => CHAMPS.get(c.id)?.theme === th.id) })).filter((x) => x.lignes.length);
   const themes = parTheme.map(({ th, lignes }) => `<section class="carte">
       <div class="carte-tete"><span class="pastille ${th.couleur}">${ic(th.icone)}</span><h2>${ech(th.titre)}</h2></div>
       <ul class="liste">${lignes.map(({ id: c, valeur }) => `<li class="ligne"><span class="corps"><span class="libelle">${ech(CHAMPS.get(c).libelle)}</span><br><span class="valeur">${avecUnite(CHAMPS.get(c), valeur)}</span></span></li>`).join('')}</ul>
@@ -640,11 +686,134 @@ function vueSeances() {
     ${mention()}`;
 }
 
+// ---------- Écran : Mes documents (version 21) ----------
+// Les fichiers restent sur ce téléphone (documents.js). Le carnet ne lit pas leur contenu : la personne les nomme et les range.
+
+const enTaille = (o) => (o >= 1024 * 1024 ? `${(o / 1024 / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Mo` : `${Math.max(1, Math.round(o / 1024))} ko`);
+const estPdf = (d) => d.type === 'application/pdf';
+
+function vueDocuments() {
+  const docs = store.documentsRanges(etat);
+  const groupes = store.CATEGORIES_DOCUMENTS.map((cat) => ({ cat, liste: docs.filter((d) => d.categorie === cat) })).filter((g) => g.liste.length);
+  const listes = groupes.map(({ cat, liste }) => `<section class="carte">
+      <div class="carte-tete"><span class="pastille bleu">${ic('dossier')}</span><h2>${ech(cat)}</h2><span class="compte">${liste.length}</span></div>
+      <ul class="liste">${liste.map((d) => `<li><button class="ligne" data-action="ouvrir:document:${d.id}"><span class="icone-doc">${ic(estPdf(d) ? 'fiche' : 'photo', 22)}</span><span class="corps">
+        <span class="valeur">${ech(d.titre)}</span><br>
+        <span class="meta">${[d.date ? dateCourte(d.date) : '', estPdf(d) ? 'PDF' : 'image', d.taille ? enTaille(d.taille) : ''].filter(Boolean).join(' · ')}</span>
+      </span><span class="chevron">${ic('chevron', 18)}</span></button></li>`).join('')}</ul>
+    </section>`).join('');
+  return `<h1 class="titre-page">Mes documents</h1>
+    <p class="sous-titre">Ordonnances, prises de sang, comptes rendus : rangés sur ce téléphone, lisibles même sans connexion.</p>
+    ${ui.erreurDocument ? `<p class="erreur">${ech(ui.erreurDocument)}</p>` : ''}
+    <button class="bouton large" data-action="choisir-document">${ic('plus', 18)} Ajouter un document</button>
+    <input type="file" id="fichier-document" accept="application/pdf,image/*" hidden>
+    ${listes || '<section class="carte"><p class="vide">Aucun document rangé pour l’instant.</p></section>'}
+    <section class="carte">
+      <div class="carte-tete"><span class="pastille ambre">${ic('alerte')}</span><h2>Bon à savoir</h2></div>
+      <ul class="liste-simple">
+        <li><b>Un document reçu par mail</b> (résultats du laboratoire, ordonnance) : ouvrez la pièce jointe, enregistrez-la sur le téléphone, puis touchez « Ajouter un document » et choisissez-la. Le carnet ne peut pas lire vos mails lui-même.</li>
+        <li><b>Rien n’est envoyé.</b> Le carnet ne lit pas le contenu des documents : c’est vous qui les nommez et les rangez.</li>
+        <li><b>Si le téléphone est perdu ou vidé, les documents disparaissent avec le carnet.</b> La sauvegarde (bouton en haut à droite) les contient : gardez le fichier ailleurs. Gardez aussi les originaux.</li>
+      </ul>
+      <p class="discret" id="place-occupee" style="margin-top:10px"></p>
+    </section>
+    ${mention()}`;
+}
+
+async function afficherPlace() {
+  const el = document.getElementById('place-occupee');
+  if (!el) return;
+  const place = await coffre.placeOccupee();
+  if (place && place.quota) el.textContent = `Place prise par le carnet sur ce téléphone : ${enTaille(place.utilise)}, sur ${enTaille(place.quota)} que le navigateur lui laisse.`;
+}
+
+let urlDocument = null; // adresse temporaire du fichier ouvert, libérée à la fermeture
+
+function feuilleAjoutDocument() {
+  const f = ui.feuille.fichier;
+  const titre = (f?.name ?? '').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
+  return formulaireDocument({ titre, categorie: '', date: aujourdhui() }, `Ajouter : ${f?.name ?? ''}`, 'document');
+}
+
+function formulaireDocument(d, titreFeuille, formulaire, id = '') {
+  return `<div class="feuille-tete"><h2>${ech(titreFeuille)}</h2><button class="bouton-rond" data-action="fermer" aria-label="Fermer">${ic('croix', 18)}</button></div>
+    <form data-form="${formulaire}" data-id="${ech(id)}">
+      <label class="champ">Nom du document<input type="text" name="titre" value="${ech(d.titre)}" autocomplete="off" required></label>
+      <div class="champ"><span class="titre-champ">Rangé dans</span>
+        <div class="coches choix-unique">${store.CATEGORIES_DOCUMENTS.map((c) => `<label><input type="radio" name="categorie" value="${ech(c)}" ${c === (d.categorie || 'Autre') ? 'checked' : ''}>${ech(c)}</label>`).join('')}</div></div>
+      <label class="champ">Date du document<small>Celle écrite sur le document (date de l’ordonnance, du prélèvement…).</small><input type="date" name="date" value="${ech(d.date)}" max="${aujourdhui()}"></label>
+      ${ui.erreur ? `<p class="erreur">${ech(ui.erreur)}</p>` : ''}
+      <button class="bouton large" type="submit">Enregistrer</button>
+    </form>`;
+}
+
+function feuilleDocument(id) {
+  const d = (etat.documents ?? []).find((x) => x.id === id);
+  const tete = `<div class="feuille-tete"><h2>${ech(d?.titre ?? 'Document')}</h2><button class="bouton-rond" data-action="fermer" aria-label="Fermer">${ic('croix', 18)}</button></div>`;
+  if (!d) return `${tete}<p class="vide">Ce document n’existe plus dans le carnet.</p>`;
+  return `${tete}
+    <p class="discret">${ech([d.categorie, d.date ? `daté du ${dateCourte(d.date)}` : '', d.taille ? enTaille(d.taille) : ''].filter(Boolean).join(' · '))}</p>
+    <div class="apercu-document" id="apercu-document" data-id="${ech(d.id)}"><p class="discret">Ouverture…</p></div>
+    <div class="rangee" style="margin-top:12px" id="actions-document"></div>
+    <div class="rangee" style="margin-top:8px">
+      <button class="bouton neutre" data-action="ouvrir:modif-document:${d.id}">Renommer, classer</button>
+      <button class="bouton danger" data-action="retirer-document:${d.id}">Retirer</button>
+    </div>`;
+}
+
+/** Remplit l'aperçu une fois la feuille affichée : le fichier est lu sur l'appareil, sans réseau. */
+async function remplirApercu() {
+  const bloc = document.getElementById('apercu-document');
+  if (urlDocument && !bloc) { URL.revokeObjectURL(urlDocument); urlDocument = null; }
+  if (!bloc || bloc.dataset.rempli) return;
+  bloc.dataset.rempli = '1';
+  const d = (etat.documents ?? []).find((x) => x.id === bloc.dataset.id);
+  let fichier;
+  try { fichier = await coffre.lire(d.id); } catch (e) { console.error(e); }
+  if (!fichier) { bloc.innerHTML = '<p class="vide">Le fichier n’est pas sur cet appareil (sauvegarde reprise sans lui ?).</p>'; return; }
+  if (urlDocument) URL.revokeObjectURL(urlDocument);
+  urlDocument = URL.createObjectURL(fichier);
+  const nom = d.nomFichier || `${d.titre}${estPdf(d) ? '.pdf' : ''}`;
+  if (!estPdf(d)) bloc.innerHTML = `<img class="photo-entiere" src="${urlDocument}" alt="${ech(d.titre)}">`;
+  else if (navigator.pdfViewerEnabled) bloc.innerHTML = `<iframe class="lecteur-pdf" src="${urlDocument}" title="${ech(d.titre)}"></iframe>`;
+  else bloc.innerHTML = '<p class="discret">Ce navigateur n’affiche pas les PDF à l’intérieur d’une page. Touchez « Ouvrir » : le PDF s’ouvre dans le lecteur du téléphone, puis revenez au carnet par le geste « retour ».</p>';
+  document.getElementById('actions-document').innerHTML = `<a class="bouton" href="${urlDocument}" target="_blank" rel="noopener">Ouvrir en grand</a>
+    <a class="bouton neutre" href="${urlDocument}" download="${ech(nom)}">Enregistrer une copie</a>`;
+}
+
+/** Fichiers du coffre pour la sauvegarde : { identifiant: data URL }. */
+async function documentsPourSauvegarde() {
+  const fichiers = await coffre.tous();
+  const sortie = {};
+  for (const [id, blob] of fichiers) if ((etat.documents ?? []).some((d) => d.id === id)) sortie[id] = await coffre.versDataUrl(blob);
+  return sortie;
+}
+
+async function remplacerDocuments(objet) {
+  const blobs = {};
+  for (const [id, url] of Object.entries(objet)) blobs[id] = await coffre.depuisDataUrl(url);
+  await coffre.remplacer(blobs);
+}
+
 // ---------- Écran : Ma fiche ----------
 
 function vueFiche() {
   // « Alimentation et poids » se règle depuis l'accueil (Poids, Alimentation, Liquides) : pas de doublon ici.
-  const themes = THEMES.filter((t) => t.id !== 'alimentation').map((t) => {
+  const themes = THEMES.filter((t) => t.id !== 'alimentation').map((t) => carteTheme(t)).join('');
+  const dispositif = carteTheme(DISPOSITIF, 'À part de la fiche de sortie : ce n’est pas le service de réadaptation qui le suit, mais le centre de suivi du dispositif. Laissez vide si vous n’en avez pas.');
+
+  const message = ui.messageFiche ? `<div class="bandeau reception">${ic('coche', 20)}<div class="corps"><b>Fiche enregistrée.</b> ${ech(ui.messageFiche)}</div></div>` : '';
+  const remplir = lireBrouillon() ? carteBrouillon() : `<button class="bouton large" data-action="nav:remplir">${ic('fiche', 18)} Remplir toute ma fiche d’un coup</button>`;
+
+  return `<h1 class="titre-page">Ma fiche</h1>
+    <p class="sous-titre">Ce que vos soignants ont écrit pour vous. Un champ vide reste vide : rien n’est complété à leur place.</p>
+    ${message}${bandeauExemple()}${remplir}
+    <p class="discret" style="padding:0 2px">Ou touchez une ligne pour changer un seul renseignement. Le poids, le sel et les liquides se règlent aussi depuis l’accueil.</p>
+    ${carteMedecins()}${themes}${dispositif}${mention()}`;
+}
+
+/** Un thème de la fiche (ou le dispositif, version 21) : chaque ligne s'ouvre d'un toucher. */
+function carteTheme(t, explication = '') {
     const renseignes = t.champs.filter((c) => store.consigneCourante(etat, c.id)).length;
     const lignes = t.champs.map((c) => {
       const v = store.consigneCourante(etat, c.id);
@@ -660,18 +829,9 @@ function vueFiche() {
     }).join('');
     return `<section class="carte">
       <div class="carte-tete"><span class="pastille ${t.couleur}">${ic(t.icone)}</span><h2>${ech(t.titre)}</h2><span class="compte">${renseignes} / ${t.champs.length}</span></div>
+      ${explication ? `<p class="discret">${ech(explication)}</p>` : ''}
       <ul class="liste">${lignes}</ul>
     </section>`;
-  }).join('');
-
-  const message = ui.messageFiche ? `<div class="bandeau reception">${ic('coche', 20)}<div class="corps"><b>Fiche enregistrée.</b> ${ech(ui.messageFiche)}</div></div>` : '';
-  const remplir = lireBrouillon() ? carteBrouillon() : `<button class="bouton large" data-action="nav:remplir">${ic('fiche', 18)} Remplir toute ma fiche d’un coup</button>`;
-
-  return `<h1 class="titre-page">Ma fiche</h1>
-    <p class="sous-titre">Ce que vos soignants ont écrit pour vous. Un champ vide reste vide : rien n’est complété à leur place.</p>
-    ${message}${bandeauExemple()}${remplir}
-    <p class="discret" style="padding:0 2px">Ou touchez une ligne pour changer un seul renseignement. Le poids, le sel et les liquides se règlent aussi depuis l’accueil.</p>
-    ${carteMedecins()}${themes}${mention()}`;
 }
 
 /** Les médecins enregistrés une fois, pour les choisir ensuite d'une touche. */
@@ -1202,6 +1362,9 @@ function feuilleRdv() {
 
 function feuilleUrgence() {
   const service = store.consigneCourante(etat, 'numero_service');
+  const choc = parole('un_choc_sans_malaise');
+  const chocs = parole('chocs_repetes');
+  const centre = store.consigneCourante(etat, 'dispositif_centre');
   return `<div class="feuille-tete"><h2>En cas d’urgence</h2><button class="bouton-rond" data-action="fermer" aria-label="Fermer">${ic('croix', 18)}</button></div>
     <div class="bloc">
       <a class="urgence-numero" href="tel:15">${ic('telephone', 28)}<div><strong>15</strong><br><span>SAMU, urgence médicale</span></div></a>
@@ -1210,6 +1373,9 @@ function feuilleUrgence() {
         <div class="carte-tete"><span class="pastille ambre">${ic('telephone')}</span><h2>Mon service</h2></div>
         ${service ? `<div class="valeur" style="font-weight:700;font-size:1.2rem">${ech(service.valeur)}</div>` : '<p class="vide">Numéro du service non renseigné sur la fiche.</p>'}
       </section>
+      ${choc || chocs ? `<section class="carte"><div class="carte-tete"><span class="pastille corail">${ic('dispositif')}</span><h2>Défibrillateur : ce que le centre de suivi a écrit</h2></div>
+        <div class="bloc">${choc ? `<div><p class="libelle discret">Un choc, sans malaise</p>${choc}</div>` : ''}${chocs ? `<div><p class="libelle discret">Plusieurs chocs</p>${chocs}</div>` : ''}</div>
+        ${centre ? `<p class="discret" style="margin-top:10px">Centre de suivi : ${ech(centre.valeur)}</p>` : ''}</section>` : ''}
       <p class="mention">Le carnet ne juge pas de l’urgence. Dans le doute, appelez.</p>
     </div>`;
 }
@@ -1279,6 +1445,9 @@ function feuille() {
     : type === 'urgence' ? feuilleUrgence()
     : type === 'mon-eau' ? feuilleMonEau()
     : type === 'seance' ? feuilleSeance(arg)
+    : type === 'document' ? feuilleDocument(arg)
+    : type === 'ajout-document' ? feuilleAjoutDocument()
+    : type === 'modif-document' ? (() => { const d = etat.documents.find((x) => x.id === arg); return d ? formulaireDocument(d, 'Renommer, classer', 'modif-document', d.id) : ''; })()
     : feuilleReglages();
   return `<div class="voile" data-voile><div class="feuille" role="dialog" aria-modal="true">${contenu}</div></div>`;
 }
@@ -1286,7 +1455,7 @@ function feuille() {
 // ---------- Assemblage ----------
 
 function rendre() {
-  const contenu = ui.vue === 'fiche' ? vueFiche() : ui.vue === 'poids' ? vuePoids() : ui.vue === 'medicaments' ? vueMedicaments() : ui.vue === 'alimentation' ? vueAlimentation() : ui.vue === 'liquides' ? vueLiquides() : ui.vue === 'seances' ? vueSeances() : ui.vue === 'soignant' ? vueSoignant() : ui.vue === 'remplir' ? vueRemplir() : vueAujourdhui();
+  const contenu = ui.vue === 'fiche' ? vueFiche() : ui.vue === 'poids' ? vuePoids() : ui.vue === 'medicaments' ? vueMedicaments() : ui.vue === 'alimentation' ? vueAlimentation() : ui.vue === 'liquides' ? vueLiquides() : ui.vue === 'seances' ? vueSeances() : ui.vue === 'soignant' ? vueSoignant() : ui.vue === 'remplir' ? vueRemplir() : ui.vue === 'documents' ? vueDocuments() : vueAujourdhui();
   document.getElementById('app').innerHTML = `
     <header class="barre">
       ${ui.vue === 'aujourdhui'
@@ -1301,10 +1470,12 @@ function rendre() {
     ${feuille()}`;
   document.body.style.overflow = ui.feuille ? 'hidden' : '';
   if (ui.vue === 'alimentation') filtrerAliments();
+  if (ui.vue === 'documents') afficherPlace();
+  remplirApercu();
 }
 
 function aller(vue) {
-  ui.vue = vue; ui.feuille = null; ui.erreur = ''; ui.erreurLimite = ''; ui.erreurBoisson = ''; ui.erreurMedecin = ''; ui.messageFiche = '';
+  ui.vue = vue; ui.feuille = null; ui.erreur = ''; ui.erreurLimite = ''; ui.erreurBoisson = ''; ui.erreurMedecin = ''; ui.erreurDocument = ''; ui.messageFiche = '';
   if (location.hash.slice(1) !== vue) {
     // Quitter l'accueil ajoute une étape à l'historique : le geste « retour » du téléphone ramène alors à l'accueil
     // au lieu de fermer l'appli.
@@ -1406,15 +1577,30 @@ document.addEventListener('click', (evenement) => {
   else if (action === 'choisir-photo') document.getElementById('fichier-photo').click();
   else if (action === 'retirer-photo') { ui.feuille.photo = null; document.getElementById('bloc-photo').innerHTML = blocPhoto(null); }
   else if (action === 'periode') { ui.periode = Number(a); rendre(); }
+  else if (action === 'tabac') tenter(() => store.noterCigarettes(etat, jour, Number(a), maintenant()), { fermer: false });
+  else if (action === 'tabac-substitut') tenter(() => store.basculerSubstitut(etat, jour, maintenant()), { fermer: false });
+  else if (action === 'tabac-activer') tenter(() => store.activerSuiviTabac(etat, true), { fermer: false });
+  else if (action === 'tabac-masquer') { if (confirm('Ne plus afficher le suivi du tabac sur l’accueil ? Ce qui est noté est gardé ; vous pourrez le réafficher en bas de l’accueil.')) tenter(() => store.activerSuiviTabac(etat, false), { fermer: false }); }
+  else if (action === 'choisir-document') document.getElementById('fichier-document').click();
+  else if (action === 'retirer-document') {
+    if (confirm('Retirer ce document du carnet ? Le fichier sera effacé de ce téléphone (l’original, dans vos mails ou vos fichiers, n’est pas touché).')) {
+      coffre.retirer(a).catch((e) => console.error('Document non effacé', e));
+      tenter(() => store.retirerDocument(etat, a));
+    }
+  }
   else if (action === 'tout-pris') tenter(() => store.cocherMoment(etat, jour, a, maintenant()), { fermer: false });
   else if (action === 'prise') tenter(() => store.basculerPrise(etat, jour, a, b, maintenant()), { fermer: false });
   else if (action === 'suppr-poids') { if (confirm(`Retirer la pesée du ${dateCourte(a)} ?`)) tenter(() => store.retirerPoids(etat, a)); }
   else if (action === 'suppr-rdv') { if (confirm('Retirer ce rendez-vous ?')) tenter(() => store.retirerRendezVous(etat, a)); }
   else if (action === 'arreter-med') { if (confirm('Retirer ce médicament de la liste du jour ? Les prises déjà cochées sont conservées.')) tenter(() => store.arreterMedicament(etat, a, jour)); }
   else if (action === 'exemple') tenter(() => store.etatExemple(jour));
-  else if (action === 'effacer-exemple') { if (confirm('Effacer l’exemple fictif ?')) { remplacerPhotos({}); tenter(() => store.etatVide()); aller('aujourdhui'); } }
-  else if (action === 'tout-effacer') { if (confirm('Effacer tout le carnet de cet appareil ? Sans sauvegarde, rien ne pourra être récupéré.')) { remplacerPhotos({}); tenter(() => store.etatVide()); aller('aujourdhui'); } }
-  else if (action === 'exporter') telecharger(`carnet-coeur_${jour}.json`, store.exporter(etat, maintenant(), Object.fromEntries(photos)));
+  else if (action === 'effacer-exemple') { if (confirm('Effacer l’exemple fictif ?')) { remplacerPhotos({}); coffre.remplacer({}).catch(console.error); tenter(() => store.etatVide()); aller('aujourdhui'); } }
+  else if (action === 'tout-effacer') { if (confirm('Effacer tout le carnet de cet appareil ? Sans sauvegarde, rien ne pourra être récupéré.')) { remplacerPhotos({}); coffre.remplacer({}).catch(console.error); tenter(() => store.etatVide()); aller('aujourdhui'); } }
+  else if (action === 'exporter') {
+    documentsPourSauvegarde()
+      .then((docs) => telecharger(`carnet-coeur_${jour}.json`, store.exporter(etat, maintenant(), Object.fromEntries(photos), docs)))
+      .catch((e) => { console.error(e); alert('Les documents n’ont pas pu être lus : la sauvegarde n’a pas été faite.'); });
+  }
   else if (action === 'importer') document.getElementById('fichier-import').click();
 });
 
@@ -1444,6 +1630,19 @@ document.addEventListener('submit', (evenement) => {
     try { enregistrer(store.boire(etat, aujourdhui(), s.ml, maintenant(), eauPourBoire())); ui.erreurBoisson = ''; } catch (e) { ui.erreurBoisson = e.message; }
     rendre();
   }
+  else if (type === 'document') {
+    const f = ui.feuille?.fichier;
+    if (!f) return;
+    const id = store.nouvelIdDocument(maintenant());
+    const saisie = { ...s, id, type: f.type, nomFichier: f.name, taille: f.size };
+    let essai;
+    try { essai = store.ajouterDocument(etat, saisie, maintenant()); } catch (e) { ui.erreur = e.message; rendre(); return; }
+    // Le fichier d'abord : si le téléphone manque de place, rien n'est inscrit dans le carnet.
+    coffre.poser(id, f)
+      .then(() => { enregistrer(essai); ui.feuille = null; ui.erreur = ''; rendre(); coffre.demanderPersistance(); })
+      .catch((e) => { console.error(e); ui.erreur = 'Le document n’a pas pu être rangé sur ce téléphone (place insuffisante ?).'; rendre(); });
+  }
+  else if (type === 'modif-document') tenter(() => store.modifierDocument(etat, id, s));
   else if (type === 'mon-eau') tenter(() => store.ajouterMonEau(etat, s, maintenant()));
   else if (type === 'seance') {
     const fait = formulaire.dataset.fait === 'oui';
@@ -1531,6 +1730,16 @@ document.addEventListener('change', async (evenement) => {
     }
     return;
   }
+  if (evenement.target.id === 'fichier-document') {
+    const fichier = evenement.target.files[0];
+    evenement.target.value = '';
+    if (!fichier) return;
+    ui.erreurDocument = '';
+    ui.feuille = { type: 'ajout-document', fichier };
+    ui.erreur = '';
+    rendre();
+    return;
+  }
   if (evenement.target.id !== 'fichier-import') return;
   const fichier = evenement.target.files[0];
   if (!fichier) return;
@@ -1538,9 +1747,11 @@ document.addEventListener('change', async (evenement) => {
     const contenu = await fichier.text();
     const lu = store.importer(contenu);
     const photosLues = store.photosDeLaSauvegarde(contenu);
+    const documentsLus = store.documentsDeLaSauvegarde(contenu);
     if (carnetVide() || confirm('Remplacer le carnet de cet appareil par cette sauvegarde ?')) {
       enregistrer(lu);
       remplacerPhotos(photosLues);
+      remplacerDocuments(documentsLus).catch((e) => { console.error(e); alert('Les documents de la sauvegarde n’ont pas pu être rangés sur ce téléphone.'); });
       aller('aujourdhui');
       return;
     }

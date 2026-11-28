@@ -1,7 +1,7 @@
 // Petits outils d'affichage communs au carnet et à la page soignant.
 
 // À changer avec VERSION dans sw.js à chaque mise en ligne : c'est ce qui dit quelle version on a sous les yeux.
-export const VERSION_APPLI = 20;
+export const VERSION_APPLI = 21;
 
 export const ech = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -28,6 +28,8 @@ export const TRACES = {
   micro: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.500 11.500a6.500 6.500 0 0 0 13 0M12 18v3"/>',
   photo: '<rect x="3.500" y="7" width="17" height="12.500" rx="3"/><path d="M8.500 7l1.500-2.500h4L15.500 7"/><circle cx="12" cy="13.200" r="3.200"/>',
   goutte: '<path d="M12 3.500s6 6.200 6 10.500a6 6 0 0 1-12 0c0-4.300 6-10.500 6-10.500Z"/>',
+  tabac: '<rect x="2.500" y="13" width="15" height="4" rx="1"/><path d="M13.500 13v4M20.500 13v4M19 4.500c0 2-1.500 2-1.500 4s1.500 2 1.500 4"/>',
+  dossier: '<path d="M3.500 7.500a2 2 0 0 1 2-2h4l2 2.500h7a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V7.500Z"/>',
   alerte: '<path d="M12 4 2.500 20h19L12 4ZM12 10v4.500M12 17.300v.2"/>',
 };
 

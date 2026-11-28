@@ -12,7 +12,7 @@ export const SCHEMA = 1;
 export const FORMAT = 'carnet-coeur';
 
 export function etatVide() {
-  return { schema: SCHEMA, exemple: false, consignes: {}, medicaments: [], prises: {}, poids: [], rendezVous: [], suivi: {}, boissons: {}, reception: null, fichesRecues: [], mesEaux: [], eauChoisie: '', seances: [], medecins: [] };
+  return { schema: SCHEMA, exemple: false, consignes: {}, medicaments: [], prises: {}, poids: [], rendezVous: [], suivi: {}, boissons: {}, reception: null, fichesRecues: [], mesEaux: [], eauChoisie: '', seances: [], medecins: [], tabac: { actif: false, jours: {} }, documents: [] };
 }
 
 const texte = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -451,6 +451,87 @@ export function retirerSeance(etat, id) {
   return { ...etat, seances: (etat.seances ?? []).filter((s) => s.id !== id) };
 }
 
+// ---------- Coffre à documents (version 21) ----------
+// Ici, la fiche de chaque document (nom, catégorie, date du document) ; le fichier lui-même est rangé à part sur
+// l'appareil (documents.js). Le carnet ne lit pas le contenu : c'est la personne qui nomme et classe.
+
+export const CATEGORIES_DOCUMENTS = ['Ordonnance', 'Prise de sang', 'Compte rendu', 'Imagerie', 'Courrier', 'Autre'];
+export const TAILLE_MAX_DOCUMENT = 25 * 1024 * 1024;
+const TYPES_DOCUMENT = /^(application\/pdf|image\/(jpeg|png|webp|gif|heic|heif))$/;
+
+export const nouvelIdDocument = (maintenant) => nouvelId('doc', maintenant);
+
+function lireDocument(d) {
+  if (!estObjet(d) || !texte(d.id) || !texte(d.titre)) throw new Error('Un document est illisible.');
+  const taille = Number(d.taille);
+  return {
+    id: d.id, titre: texte(d.titre).slice(0, 120),
+    categorie: CATEGORIES_DOCUMENTS.includes(d.categorie) ? d.categorie : 'Autre',
+    date: dateOuVide(d.date), type: texte(d.type), nomFichier: texte(d.nomFichier).slice(0, 200),
+    taille: Number.isFinite(taille) && taille >= 0 ? Math.round(taille) : 0, ajouteLe: texte(d.ajouteLe),
+  };
+}
+
+/** saisie : { id, titre, categorie, date, type, nomFichier, taille }. Le fichier se range à part (documents.js). */
+export function ajouterDocument(etat, saisie, maintenant) {
+  if (!texte(saisie.id)) throw new Error('Document sans identifiant.');
+  if (!texte(saisie.titre)) throw new Error('Donnez un nom au document.');
+  if (!TYPES_DOCUMENT.test(texte(saisie.type))) throw new Error('Seuls les PDF et les images (photo, capture d’écran) sont acceptés.');
+  if (!(Number(saisie.taille) > 0)) throw new Error('Ce fichier est vide.');
+  if (Number(saisie.taille) > TAILLE_MAX_DOCUMENT) throw new Error('Ce fichier dépasse 25 Mo : il prendrait trop de place sur le téléphone.');
+  if (texte(saisie.date) && !estDateIso(saisie.date)) throw new Error('La date du document est invalide.');
+  if ((etat.documents ?? []).some((d) => d.id === saisie.id)) throw new Error('Ce document est déjà rangé.');
+  return { ...etat, documents: [...(etat.documents ?? []), lireDocument({ ...saisie, ajouteLe: maintenant })] };
+}
+
+export function modifierDocument(etat, id, { titre, categorie, date }) {
+  if (!texte(titre)) throw new Error('Donnez un nom au document.');
+  if (texte(date) && !estDateIso(date)) throw new Error('La date du document est invalide.');
+  return { ...etat, documents: (etat.documents ?? []).map((d) => (d.id === id ? lireDocument({ ...d, titre, categorie, date }) : d)) };
+}
+
+export const retirerDocument = (etat, id) => ({ ...etat, documents: (etat.documents ?? []).filter((d) => d.id !== id) });
+
+/** Les documents, le plus récent d'abord (date du document, sinon date d'ajout). */
+export const documentsRanges = (etat) => [...(etat.documents ?? [])].sort((a, b) => (b.date || b.ajouteLe).localeCompare(a.date || a.ajouteLe));
+
+// ---------- Tabac : suivi quotidien (version 21) ----------
+// Affiché seulement si la personne l'a demandé. Un compteur par jour et une case « substitut » : rien n'est jugé,
+// aucun objectif n'est fixé par le carnet. Un jour où rien n'est noté reste vide (différent de « 0 »).
+
+const TABAC_MAX = 200;
+const tabacDe = (etat) => etat.tabac ?? { actif: false, jours: {} };
+
+export function activerSuiviTabac(etat, actif) {
+  return { ...etat, tabac: { ...tabacDe(etat), actif: Boolean(actif) } };
+}
+
+function jourDeTabac(etat, date, changer, maintenant) {
+  if (!estDateIso(date)) throw new Error('Date invalide.');
+  const t = tabacDe(etat);
+  const avant = t.jours[date] ?? { cigarettes: 0, substitut: false };
+  const apres = { ...changer(avant), saisiLe: maintenant };
+  return { ...etat, tabac: { ...t, jours: { ...t.jours, [date]: apres } } };
+}
+
+/** Ajoute (delta = 1) ou retire (delta = -1) une cigarette ; delta = 0 note « aucune » pour ce jour. */
+export function noterCigarettes(etat, date, delta, maintenant) {
+  return jourDeTabac(etat, date, (j) => ({ ...j, cigarettes: Math.min(TABAC_MAX, Math.max(0, j.cigarettes + Math.trunc(Number(delta) || 0))) }), maintenant);
+}
+
+export function basculerSubstitut(etat, date, maintenant) {
+  return jourDeTabac(etat, date, (j) => ({ ...j, substitut: !j.substitut }), maintenant);
+}
+
+/** Ce qui est noté un jour, ou null si rien ne l'est. */
+export const tabacDuJour = (etat, date) => tabacDe(etat).jours[date] ?? null;
+
+/** La semaine du lundi au dimanche : [{ date, note }] (note = null si rien n'est noté). */
+export function semaineDeTabac(etat, date) {
+  const lundi = lundiDe(date);
+  return Array.from({ length: 7 }, (_, i) => { const jour = ajouterJours(lundi, i); return { date: jour, note: tabacDuJour(etat, jour) }; });
+}
+
 /** La semaine qui contient une date, du lundi au dimanche : [{ date, seances }]. */
 export function semaineDeSeances(etat, date) {
   const lundi = lundiDe(date);
@@ -523,8 +604,21 @@ export const rendezVousAVenir = (etat, aujourdhui) => etat.rendezVous.filter((r)
 
 // ---------- Sauvegarde : export et réimport ----------
 
-export function exporter(etat, maintenant, photos = {}) {
-  return JSON.stringify({ format: FORMAT, schema: SCHEMA, exporteLe: maintenant, donnees: etat, photos }, null, 2);
+export function exporter(etat, maintenant, photos = {}, documents = {}) {
+  const contenu = { format: FORMAT, schema: SCHEMA, exporteLe: maintenant, donnees: etat, photos };
+  if (Object.keys(documents).length) contenu.documents = documents; // version 21 : { identifiant: data URL }
+  return JSON.stringify(contenu, null, 2);
+}
+
+/** Les fichiers du coffre contenus dans une sauvegarde : { identifiant: data URL } (vide avant la version 21). */
+export function documentsDeLaSauvegarde(contenu) {
+  const lu = JSON.parse(contenu);
+  if (lu.documents === undefined) return {};
+  if (!estObjet(lu.documents)) throw new Error('Les documents de la sauvegarde sont illisibles.');
+  for (const url of Object.values(lu.documents)) {
+    if (typeof url !== 'string' || !url.startsWith('data:')) throw new Error('Un document de la sauvegarde est illisible.');
+  }
+  return lu.documents;
 }
 
 const estObjet = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -636,6 +730,21 @@ export function valider(donnees) {
       } else lue.raison = texte(s.raison);
       return lue;
     }).sort((a, b) => a.date.localeCompare(b.date) || a.saisiLe.localeCompare(b.saisiLe));
+  }
+
+  // Absents des carnets enregistrés avant la version 21.
+  if (donnees.tabac !== undefined) {
+    if (!estObjet(donnees.tabac) || !estObjet(donnees.tabac.jours ?? {})) throw new Error('Suivi du tabac illisible.');
+    etat.tabac = { actif: Boolean(donnees.tabac.actif), jours: {} };
+    for (const [date, j] of Object.entries(donnees.tabac.jours ?? {})) {
+      if (!estDateIso(date) || !estObjet(j)) throw new Error('Un jour du suivi du tabac est illisible.');
+      const n = Number(j.cigarettes);
+      etat.tabac.jours[date] = { cigarettes: Number.isInteger(n) && n >= 0 && n <= TABAC_MAX ? n : 0, substitut: Boolean(j.substitut), saisiLe: texte(j.saisiLe) };
+    }
+  }
+  if (donnees.documents !== undefined) {
+    if (!Array.isArray(donnees.documents)) throw new Error('Documents illisibles.');
+    etat.documents = donnees.documents.map(lireDocument);
   }
 
   // Absent des carnets enregistrés avant l'ajout du volet Alimentation : vide dans ce cas.
