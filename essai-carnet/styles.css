@@ -576,16 +576,20 @@ a.bouton { text-decoration: none; display: inline-flex; align-items: center; jus
   --vert: #1f8a63; --vert-clair: #dcf3ea; --bleu: #2d7fd3; --bleu-clair: #e0effc;
   --bandeau: var(--bandeau-indigo); --bandeau-ombre: rgba(74, 59, 196, 0.32); --neutre: #ebe8f8; --fond-large: #e9e6f6;
 }
-/* Coucher de soleil : les boutons sont violets, pas rouge-orangé, pour que seul « Urgence » soit rouge. */
+/* Coucher de soleil (version 26, voulu par Xavier) : boutons rouge-orangé en dégradé ; « Urgence » s'en distingue
+   par un rouge vif plein, écrit en blanc. */
 :root[data-palette="soleil"] {
   --fond: #fff7f1; --trait: #f2e3d6; --encre: #2a1c24; --encre-douce: #6b5660; --encre-pale: #9a8790;
-  --primaire: #7a3fc0; --primaire-fonce: #55298c; --primaire-clair: #efe5fb;
-  --corail: #d6336c; --corail-clair: #fce3ec; --ambre: #b86a00; --ambre-clair: #ffedc7;
+  --primaire: #cf4526; --primaire-fonce: #8f2c16; --primaire-clair: #fde4da;
+  --corail: #e8113a; --corail-clair: #ffe1e6; --ambre: #b86a00; --ambre-clair: #ffedc7;
   --vert: #2b8066; --vert-clair: #ddf1ea; --bleu: #3b63c9; --bleu-clair: #e4ebfb;
   --bandeau: var(--bandeau-soleil); --bandeau-ombre: rgba(242, 81, 107, 0.32); --neutre: #f8eadf; --fond-large: #f6e9de;
 }
 .bouton.neutre, .periodes, .etiquette.neutre, .pastille.neutre { background: var(--neutre); }
 @media (min-width: 560px) { body { background: var(--fond-large); } }
+:root[data-palette="soleil"] .bouton:not(.secondaire):not(.neutre):not(.danger) { background: linear-gradient(140deg, #ee6a22 0%, #d2382c 100%); }
+:root[data-palette="soleil"] .bouton-urgence { background: #ff1f3d; color: #fff; box-shadow: 0 6px 16px rgba(255, 31, 61, 0.35); }
+:root[data-palette="soleil"] .urgence-numero:not([style]) { background: #ff1f3d; }
 :root[data-palette] .marque .logo { background: linear-gradient(145deg, #ff8f93, var(--corail)); }
 
 .palettes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
