@@ -1,7 +1,7 @@
 // Petits outils d'affichage communs au carnet et à la page soignant.
 
 // À changer avec VERSION dans sw.js à chaque mise en ligne : c'est ce qui dit quelle version on a sous les yeux.
-export const VERSION_APPLI = 22;
+export const VERSION_APPLI = 23;
 
 export const ech = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 

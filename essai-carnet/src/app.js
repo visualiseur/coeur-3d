@@ -240,7 +240,7 @@ function vueAujourdhui() {
         </span><span class="chevron">${ic('chevron', 18)}</span></button></li>`).join('')}</ul>
     </section>` : '';
 
-  return `${bandeau}${carteBrouillon()}${bandeauReception()}${bandeauExemple()}${tuilesAccueil()}${cartePoids}${carteMeds}${carteTabac()}${carteRdv}${carteRevoir}${lienFiche}${lienDocuments}${lienSoignant}${lienTabac}${mention()}`;
+  return `${bandeau}${carteBrouillon()}${bandeauReception()}${bandeauExemple()}${tuilesAccueil()}${cartePoids}${carteMeds}${carteRdv}${carteTabac()}${carteRevoir}${lienFiche}${lienDocuments}${lienSoignant}${lienTabac}${mention()}`;
 }
 
 // ---------- Tabac : suivi quotidien (version 21) ----------
