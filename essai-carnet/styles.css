@@ -535,3 +535,12 @@ a.bouton { text-decoration: none; box-sizing: border-box; }
 .apercu-document { margin-top: 12px; }
 .lecteur-pdf { width: 100%; height: 70vh; border: 1px solid var(--trait); border-radius: 12px; background: #fff; }
 a.bouton { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+
+/* ---------- Version 22 ---------- */
+.prise.moment-pris { margin-top: 10px; }
+.prise.moment-pris .corps { flex: 1; min-width: 0; }
+.prise.moment-pris .chevron { color: var(--vert); flex: none; }
+.lien-discret.replier { padding: 4px 0; }
+.sel-bouteille { margin-top: 8px; padding: 6px 10px; border-radius: 12px; background: var(--ambre-clair); display: grid; }
+.sel-bouteille b { font-size: 1.25rem; color: var(--ambre); }
+.sel-bouteille small { color: var(--encre-douce); font-size: 0.8rem; }

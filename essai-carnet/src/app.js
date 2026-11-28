@@ -42,7 +42,7 @@ function charger() {
 
 let etat = charger();
 let photos = new Map(); // identifiant du médicament → image, chargées au démarrage
-const ui = { vue: vueDepuisAdresse(), feuille: null, periode: 30, erreur: '', recherche: '', rechercheEau: '', famillesOuvertes: new Set(), themesOuverts: new Set(['coeur']), messageFiche: '' };
+const ui = { vue: vueDepuisAdresse(), feuille: null, periode: 30, erreur: '', recherche: '', rechercheEau: '', famillesOuvertes: new Set(), themesOuverts: new Set(['coeur']), momentsOuverts: new Set(), messageFiche: '' };
 
 function vueDepuisAdresse() {
   const id = location.hash.slice(1);
@@ -188,8 +188,19 @@ function vueAujourdhui() {
     const duMoment = meds.filter((m) => m.moments[mo.id]);
     if (!duMoment.length) return '';
     const resteACocher = duMoment.some((m) => !store.estPris(etat, jour, m.id, mo.id));
+    // Version 22 : un moment dont tout est pris se replie en une seule case, pour laisser de la place sur l'accueil.
+    // La toucher la rouvre (pour décocher un médicament coché par erreur) ; « Replier » la referme.
+    const ouvert = ui.momentsOuverts.has(`${jour}|${mo.id}`);
+    if (duMoment.length > 1 && !resteACocher && !ouvert) {
+      return `<button class="prise fait moment-pris" data-action="ouvrir-moment:${mo.id}" aria-label="Médicaments du ${mo.libelle.toLowerCase()} : tous pris. Toucher pour revoir la liste.">
+        <span class="case">${ic('coche', 18)}</span>
+        <span class="corps"><span class="nom">Médicaments du ${mo.libelle.toLowerCase()}</span><br><span class="dose">${duMoment.length} pris : ${ech(duMoment.map((m) => m.nom).join(', '))}</span></span>
+        <span class="chevron">${ic('chevron', 16)}</span>
+      </button>`;
+    }
     const toutCoche = duMoment.length > 1 && resteACocher
-      ? `<button class="tout-pris" data-action="tout-pris:${mo.id}">${ic('coche', 15)} Tout le ${mo.libelle.toLowerCase()} est pris</button>` : '';
+      ? `<button class="tout-pris" data-action="tout-pris:${mo.id}">${ic('coche', 15)} Tout le ${mo.libelle.toLowerCase()} est pris</button>`
+      : duMoment.length > 1 ? `<button class="lien-discret replier" data-action="replier-moment:${mo.id}">Replier</button>` : '';
     return `<div class="moment-tete"><div class="moment">${mo.libelle}</div>${toutCoche}</div>${duMoment.map((m) => {
       const fait = store.estPris(etat, jour, m.id, mo.id);
       return `<button class="prise${fait ? ' fait' : ''}" data-action="prise:${m.id}:${mo.id}" aria-pressed="${fait}">
@@ -483,6 +494,20 @@ function choixEau() {
 }
 
 /** Le sel apporté par les eaux notées aujourd'hui, et ce qu'il représente de la limite de sel écrite. */
+/**
+ * Version 22 : le sel de l'eau bue aujourd'hui, tout de suite sous les millilitres qui restent.
+ * Affiché dès qu'une eau est choisie ou qu'une eau a été notée. Ce n'est pas « le sel qui reste » :
+ * la limite de sel compte aussi les aliments, que le carnet n'additionne pas.
+ */
+function selACoteDesMl(jour) {
+  const eauxNotees = store.boissonsDuJour(etat, jour).some((b) => b.eau);
+  if (!eauxNotees && !eauChoisie()) return '';
+  const g = store.selDesEauxDuJour(etat, jour);
+  const limite = store.limiteSelG(etat);
+  const part = store.partDeLaLimite(g, limite);
+  return `<div class="sel-bouteille"><span class="discret">Sel de l’eau bue</span><b>${g ? enGrammesDeSel(g) : '0 g'}</b>${part === null || !g ? '' : `<small>soit ${part} % de ma limite de sel</small>`}</div>`;
+}
+
 function ligneSelDesEaux(jour) {
   const boissons = store.boissonsDuJour(etat, jour);
   if (!boissons.some((b) => b.eau)) return '';
@@ -555,6 +580,7 @@ function carteBoissons() {
           <div class="discret">${reste >= 0 ? 'Il reste' : 'Au-delà de la limite écrite'}</div>
           <div class="grand-nombre">${Math.abs(reste).toLocaleString('fr-FR')}<small>mL</small></div>
           ${reste > 0 ? `<div class="en-verres">soit ${enVerres(reste)}</div>` : ''}
+          ${selACoteDesMl(jour)}
           <div class="discret" style="margin-top:8px">Bu aujourd’hui : <b>${enMl(bu)}</b></div>
           <div class="discret">Ma limite : <b>${enLitres(limite)}</b>, soit ${enVerres(limite)}</div>
           ${ecrit.auteur ? `<div class="meta" style="font-size:0.8rem;color:var(--encre-pale);margin-top:4px">${origine(ecrit)}</div>` : ''}
@@ -1588,8 +1614,10 @@ document.addEventListener('click', (evenement) => {
       tenter(() => store.retirerDocument(etat, a));
     }
   }
+  else if (action === 'ouvrir-moment') { ui.momentsOuverts.add(`${jour}|${a}`); rendre(); }
+  else if (action === 'replier-moment') { ui.momentsOuverts.delete(`${jour}|${a}`); rendre(); }
   else if (action === 'tout-pris') tenter(() => store.cocherMoment(etat, jour, a, maintenant()), { fermer: false });
-  else if (action === 'prise') tenter(() => store.basculerPrise(etat, jour, a, b, maintenant()), { fermer: false });
+  else if (action === 'prise') { ui.momentsOuverts.delete(`${jour}|${b}`); tenter(() => store.basculerPrise(etat, jour, a, b, maintenant()), { fermer: false }); }
   else if (action === 'suppr-poids') { if (confirm(`Retirer la pesée du ${dateCourte(a)} ?`)) tenter(() => store.retirerPoids(etat, a)); }
   else if (action === 'suppr-rdv') { if (confirm('Retirer ce rendez-vous ?')) tenter(() => store.retirerRendezVous(etat, a)); }
   else if (action === 'arreter-med') { if (confirm('Retirer ce médicament de la liste du jour ? Les prises déjà cochées sont conservées.')) tenter(() => store.arreterMedicament(etat, a, jour)); }
