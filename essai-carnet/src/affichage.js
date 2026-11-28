@@ -1,7 +1,7 @@
 // Petits outils d'affichage communs au carnet et à la page soignant.
 
 // À changer avec VERSION dans sw.js à chaque mise en ligne : c'est ce qui dit quelle version on a sous les yeux.
-export const VERSION_APPLI = 24;
+export const VERSION_APPLI = 25;
 
 export const ech = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -30,6 +30,7 @@ export const TRACES = {
   goutte: '<path d="M12 3.500s6 6.200 6 10.500a6 6 0 0 1-12 0c0-4.300 6-10.500 6-10.500Z"/>',
   tabac: '<rect x="2.500" y="13" width="15" height="4" rx="1"/><path d="M13.500 13v4M20.500 13v4M19 4.500c0 2-1.500 2-1.500 4s1.500 2 1.500 4"/>',
   dossier: '<path d="M3.500 7.500a2 2 0 0 1 2-2h4l2 2.500h7a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V7.500Z"/>',
+  points: '<circle cx="5" cy="12" r="1.300" fill="currentColor"/><circle cx="12" cy="12" r="1.300" fill="currentColor"/><circle cx="19" cy="12" r="1.300" fill="currentColor"/>',
   alerte: '<path d="M12 4 2.500 20h19L12 4ZM12 10v4.500M12 17.300v.2"/>',
 };
 

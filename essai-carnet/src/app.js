@@ -40,6 +40,32 @@ function charger() {
   }
 }
 
+// ---------- Couleurs de l'appli (version 25) ----------
+// Un goût, pas une donnée de santé : gardé sur l'appareil à part du carnet (ni dans la sauvegarde, ni effacé avec lui).
+const CLE_COULEURS = 'carnet-coeur-couleurs';
+const PALETTES = [
+  { id: 'lagon', nom: 'Lagon', barre: '#0e6b6f' },
+  { id: 'prune', nom: 'Prune et pêche', barre: '#6d2e7c' },
+  { id: 'indigo', nom: 'Indigo et lilas', barre: '#4a3bc4' },
+  { id: 'soleil', nom: 'Coucher de soleil', barre: '#7a3fc0' },
+];
+function paletteChoisie() {
+  let id = '';
+  try { id = localStorage.getItem(CLE_COULEURS) ?? ''; } catch { /* stockage refusé : couleurs d'origine */ }
+  return PALETTES.find((p) => p.id === id) ?? PALETTES[0];
+}
+function appliquerPalette(id) {
+  const palette = PALETTES.find((p) => p.id === id) ?? PALETTES[0];
+  if (palette.id === 'lagon') delete document.documentElement.dataset.palette; else document.documentElement.dataset.palette = palette.id;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', palette.barre);
+  return palette;
+}
+function choisirPalette(id) {
+  const palette = appliquerPalette(id);
+  try { localStorage.setItem(CLE_COULEURS, palette.id); } catch (e) { console.error('Couleurs non enregistrées', e); }
+}
+appliquerPalette(paletteChoisie().id);
+
 let etat = charger();
 let photos = new Map(); // identifiant du médicament → image, chargées au démarrage
 const ui = { vue: vueDepuisAdresse(), feuille: null, periode: 30, erreur: '', recherche: '', rechercheEau: '', famillesOuvertes: new Set(), themesOuverts: new Set(['coeur']), momentsOuverts: new Set(), messageFiche: '' };
@@ -114,23 +140,14 @@ function carnetVide() {
 function vueAujourdhui() {
   const jour = aujourdhui();
   const meds = store.medicamentsEnCours(etat);
-  const prisesPrevues = meds.flatMap((m) => MOMENTS.filter((mo) => m.moments[mo.id]).map((mo) => [m.id, mo.id]));
-  const prisesFaites = prisesPrevues.filter(([m, mo]) => store.estPris(etat, jour, m, mo)).length;
   const pesee = etat.poids.find((p) => p.date === jour);
   const aVenir = store.rendezVousAVenir(etat, jour);
-  const prochain = aVenir[0];
-
-  const puces = [
-    pesee ? `${ic('coche', 15)} Poids noté` : `${ic('balance', 15)} Poids à noter`,
-    prisesPrevues.length ? `${ic('medicaments', 15)} ${prisesFaites} prise${prisesFaites > 1 ? 's' : ''} cochée${prisesFaites > 1 ? 's' : ''} sur ${prisesPrevues.length}` : '',
-    prochain ? `${ic('calendrier', 15)} Rendez-vous le ${dateTresCourte(prochain.date)}` : '',
-  ].filter(Boolean);
 
   const bandeau = `
     <section class="accueil">
       <div class="sur-titre">Aujourd’hui</div>
       <h1>${ech(dateLongue(jour))}</h1>
-      <div class="resume">${puces.map((p) => `<span class="puce">${p}</span>`).join('')}</div>
+      <div class="trace-coeur" aria-hidden="true"></div>
     </section>`;
 
   const lienFiche = `<button class="carte lien-carte" data-action="nav:fiche">
@@ -1443,9 +1460,17 @@ function feuilleSeance(arg) {
 }
 
 function feuilleReglages() {
-  return `<div class="feuille-tete"><h2>Sauvegarde</h2><button class="bouton-rond" data-action="fermer" aria-label="Fermer">${ic('croix', 18)}</button></div>
+  const actuelle = paletteChoisie().id;
+  return `<div class="feuille-tete"><h2>Réglages</h2><button class="bouton-rond" data-action="fermer" aria-label="Fermer">${ic('croix', 18)}</button></div>
     <div class="bloc">
       <section class="carte">
+        <div class="carte-tete"><h2>Couleurs</h2></div>
+        <div class="palettes">${PALETTES.map((p) => `<button class="palette${p.id === actuelle ? ' choisie' : ''}" data-action="palette:${p.id}" aria-pressed="${p.id === actuelle}">
+          <span class="echantillon" data-p="${p.id}">${p.id === actuelle ? ic('coche', 20) : ''}</span><b>${ech(p.nom)}</b></button>`).join('')}</div>
+        <p class="discret" style="margin-top:10px">Le choix reste sur ce téléphone. Il ne change rien à ce qui est écrit dans le carnet.</p>
+      </section>
+      <section class="carte">
+        <div class="carte-tete"><h2>Sauvegarde</h2></div>
         <p><b>Vos données ne quittent pas cet appareil.</b></p>
         <p class="discret" style="margin-top:6px">Aucun compte, aucun serveur. En contrepartie, si le téléphone est perdu, changé ou vidé, le carnet disparaît : faites une sauvegarde de temps en temps et gardez le fichier ailleurs.</p>
       </section>
@@ -1490,7 +1515,7 @@ function rendre() {
         : `<button class="retour" data-action="retour" aria-label="Revenir à l’accueil">${ic('retour', 22)} Accueil</button>`}
       <div class="barre-actions">
         <button class="bouton-urgence" data-action="ouvrir:urgence">${ic('telephone', 17)} Urgence</button>
-        <button class="bouton-rond" data-action="ouvrir:reglages" aria-label="Sauvegarde">${ic('reglages')}</button>
+        <button class="bouton-rond" data-action="ouvrir:reglages" aria-label="Réglages : couleurs et sauvegarde">${ic('points')}</button>
       </div>
     </header>
     <main class="page">${contenu}</main>
@@ -1617,6 +1642,7 @@ document.addEventListener('click', (evenement) => {
   }
   else if (action === 'ouvrir-moment') { ui.momentsOuverts.add(`${jour}|${a}`); rendre(); }
   else if (action === 'replier-moment') { ui.momentsOuverts.delete(`${jour}|${a}`); rendre(); }
+  else if (action === 'palette') { choisirPalette(a); rendre(); }
   else if (action === 'tout-pris') tenter(() => store.cocherMoment(etat, jour, a, maintenant()), { fermer: false });
   else if (action === 'prise') { ui.momentsOuverts.delete(`${jour}|${b}`); tenter(() => store.basculerPrise(etat, jour, a, b, maintenant()), { fermer: false }); }
   else if (action === 'suppr-poids') { if (confirm(`Retirer la pesée du ${dateCourte(a)} ?`)) tenter(() => store.retirerPoids(etat, a)); }

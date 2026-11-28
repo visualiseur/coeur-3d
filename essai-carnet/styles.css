@@ -544,3 +544,58 @@ a.bouton { text-decoration: none; display: inline-flex; align-items: center; jus
 .sel-bouteille { margin-top: 8px; padding: 6px 10px; border-radius: 12px; background: var(--ambre-clair); display: grid; }
 .sel-bouteille b { font-size: 1.25rem; color: var(--ambre); }
 .sel-bouteille small { color: var(--encre-douce); font-size: 0.8rem; }
+
+/* ---------- Version 25 : bandeau du jour réduit, avec le tracé du cœur ---------- */
+.accueil { padding: 20px 22px 14px; background: var(--bandeau); box-shadow: 0 14px 30px var(--bandeau-ombre); }
+.trace-coeur {
+  margin: 8px -22px 0; height: 46px; position: relative; z-index: 1;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 46' preserveAspectRatio='none'%3E%3Cpath d='M0 26h118l8-6 8 6h20l6 8 8-30 9 40 7-18h22l10-9 10 9h174' fill='none' stroke='%23ffffff' stroke-width='2.2' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E") left top / 100% 46px no-repeat;
+}
+
+/* ---------- Version 25 : quatre palettes au choix (Réglages, les trois points en haut à droite) ---------- */
+/* « Lagon » est la palette d'origine (les valeurs de :root, en tête de fichier). Les autres ne changent que des couleurs. */
+:root {
+  --bandeau-lagon: linear-gradient(140deg, #128087 0%, #0e6b6f 45%, #0a4d52 100%);
+  --bandeau-prune: linear-gradient(140deg, #9a4a9e 0%, #6d2e7c 48%, #c9506f 100%);
+  --bandeau-indigo: linear-gradient(140deg, #7d6df5 0%, #4a3bc4 50%, #9150dc 100%);
+  --bandeau-soleil: linear-gradient(140deg, #ff9148 0%, #f2516b 52%, #9a4fe0 100%);
+  --bandeau: var(--bandeau-lagon); --bandeau-ombre: rgba(14, 107, 111, 0.28);
+  --neutre: #f1ebe2; --fond-large: #ece5da;
+}
+:root[data-palette="prune"] {
+  --fond: #fbf4f0; --trait: #efe2da;
+  --primaire: #6d2e7c; --primaire-fonce: #4a1d57; --primaire-clair: #f1e3f4;
+  --corail: #e2553f; --corail-clair: #fde6df; --ambre: #c2620a; --ambre-clair: #fdebd3;
+  --vert: #2f7d5b; --vert-clair: #e1f2e8; --bleu: #3b63c9; --bleu-clair: #e4ebfb;
+  --bandeau: var(--bandeau-prune); --bandeau-ombre: rgba(109, 46, 124, 0.30); --neutre: #f3e8e1; --fond-large: #f1e6df;
+}
+:root[data-palette="indigo"] {
+  --fond: #f5f3fc; --trait: #e3dff3; --encre: #1b1838; --encre-douce: #57547a; --encre-pale: #8a87ab;
+  --primaire: #4a3bc4; --primaire-fonce: #2f2590; --primaire-clair: #e6e3fa;
+  --corail: #e5484d; --corail-clair: #fde4e5; --ambre: #a86800; --ambre-clair: #fff1c9;
+  --vert: #1f8a63; --vert-clair: #dcf3ea; --bleu: #2d7fd3; --bleu-clair: #e0effc;
+  --bandeau: var(--bandeau-indigo); --bandeau-ombre: rgba(74, 59, 196, 0.32); --neutre: #ebe8f8; --fond-large: #e9e6f6;
+}
+/* Coucher de soleil : les boutons sont violets, pas rouge-orangé, pour que seul « Urgence » soit rouge. */
+:root[data-palette="soleil"] {
+  --fond: #fff7f1; --trait: #f2e3d6; --encre: #2a1c24; --encre-douce: #6b5660; --encre-pale: #9a8790;
+  --primaire: #7a3fc0; --primaire-fonce: #55298c; --primaire-clair: #efe5fb;
+  --corail: #d6336c; --corail-clair: #fce3ec; --ambre: #b86a00; --ambre-clair: #ffedc7;
+  --vert: #2b8066; --vert-clair: #ddf1ea; --bleu: #3b63c9; --bleu-clair: #e4ebfb;
+  --bandeau: var(--bandeau-soleil); --bandeau-ombre: rgba(242, 81, 107, 0.32); --neutre: #f8eadf; --fond-large: #f6e9de;
+}
+.bouton.neutre, .periodes, .etiquette.neutre, .pastille.neutre { background: var(--neutre); }
+@media (min-width: 560px) { body { background: var(--fond-large); } }
+:root[data-palette] .marque .logo { background: linear-gradient(145deg, #ff8f93, var(--corail)); }
+
+.palettes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.palette {
+  border: 2px solid var(--trait); background: #fff; border-radius: 16px; padding: 8px 8px 10px; display: grid; gap: 8px; text-align: center;
+  font-size: 0.92rem; line-height: 1.2;
+}
+.palette.choisie { border-color: var(--primaire); box-shadow: 0 0 0 3px var(--primaire-clair); }
+.echantillon { height: 54px; border-radius: 10px; display: grid; place-items: center; color: #fff; }
+.echantillon[data-p="lagon"] { background: var(--bandeau-lagon); }
+.echantillon[data-p="prune"] { background: var(--bandeau-prune); }
+.echantillon[data-p="indigo"] { background: var(--bandeau-indigo); }
+.echantillon[data-p="soleil"] { background: var(--bandeau-soleil); }

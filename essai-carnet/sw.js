@@ -1,6 +1,6 @@
 // Mode hors ligne : les fichiers de l'application sont gardés sur l'appareil.
 // Changer VERSION à chaque mise en ligne, sinon les appareils gardent l'ancienne version.
-const VERSION = 'carnet-coeur-24';
+const VERSION = 'carnet-coeur-25';
 const FICHIERS = [
   './', './index.html', './soignant.html', './styles.css', './icone.svg', './manifest.webmanifest',
   './src/app.js', './src/store.js', './src/modele.js', './src/courbe.js', './src/dates.js', './src/photos.js', './src/documents.js', './src/alimentation.js', './src/sel-aliments.js', './src/sel-eaux.js', './src/transmission.js', './src/qr.js', './src/affichage.js', './src/soignant.js',
