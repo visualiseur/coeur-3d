@@ -173,7 +173,10 @@ function vueAujourdhui() {
   const blocsMoments = MOMENTS.map((mo) => {
     const duMoment = meds.filter((m) => m.moments[mo.id]);
     if (!duMoment.length) return '';
-    return `<div class="moment">${mo.libelle}</div>${duMoment.map((m) => {
+    const resteACocher = duMoment.some((m) => !store.estPris(etat, jour, m.id, mo.id));
+    const toutCoche = duMoment.length > 1 && resteACocher
+      ? `<button class="tout-pris" data-action="tout-pris:${mo.id}">${ic('coche', 15)} Tout le ${mo.libelle.toLowerCase()} est pris</button>` : '';
+    return `<div class="moment-tete"><div class="moment">${mo.libelle}</div>${toutCoche}</div>${duMoment.map((m) => {
       const fait = store.estPris(etat, jour, m.id, mo.id);
       return `<button class="prise${fait ? ' fait' : ''}" data-action="prise:${m.id}:${mo.id}" aria-pressed="${fait}">
         <span class="case">${ic('coche', 18)}</span>
@@ -1403,6 +1406,7 @@ document.addEventListener('click', (evenement) => {
   else if (action === 'choisir-photo') document.getElementById('fichier-photo').click();
   else if (action === 'retirer-photo') { ui.feuille.photo = null; document.getElementById('bloc-photo').innerHTML = blocPhoto(null); }
   else if (action === 'periode') { ui.periode = Number(a); rendre(); }
+  else if (action === 'tout-pris') tenter(() => store.cocherMoment(etat, jour, a, maintenant()), { fermer: false });
   else if (action === 'prise') tenter(() => store.basculerPrise(etat, jour, a, b, maintenant()), { fermer: false });
   else if (action === 'suppr-poids') { if (confirm(`Retirer la pesée du ${dateCourte(a)} ?`)) tenter(() => store.retirerPoids(etat, a)); }
   else if (action === 'suppr-rdv') { if (confirm('Retirer ce rendez-vous ?')) tenter(() => store.retirerRendezVous(etat, a)); }

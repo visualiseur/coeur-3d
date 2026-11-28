@@ -185,6 +185,13 @@ h1, h2, h3, p { margin: 0; }
 
 .moment { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--encre-pale); font-weight: 700; margin: 14px 0 6px; }
 .moment:first-child { margin-top: 0; }
+.moment-tete { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 14px 0 6px; }
+.moment-tete:first-child { margin-top: 0; }
+.moment-tete .moment { margin: 0; }
+.tout-pris {
+  display: inline-flex; align-items: center; gap: 6px; border: 1.5px solid var(--vert); background: #fff; color: var(--vert);
+  border-radius: 999px; padding: 6px 12px; font-size: 0.86rem; font-weight: 650; min-height: 36px; cursor: pointer;
+}
 
 .prise {
   width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; border: 1.5px solid var(--trait); background: #fff;

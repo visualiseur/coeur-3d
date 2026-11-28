@@ -250,6 +250,19 @@ export function basculerPrise(etat, date, idMedicament, moment, maintenant) {
   return { ...etat, prises: { ...etat.prises, [date]: duJour } };
 }
 
+/**
+ * Coche d'un coup les médicaments en cours prévus à ce moment (« Tout le matin est pris »).
+ * Une prise déjà cochée garde son heure ; rien n'est décoché ; chaque case reste décochable ensuite.
+ */
+export function cocherMoment(etat, date, moment, maintenant) {
+  const duJour = { ...(etat.prises[date] ?? {}) };
+  for (const m of medicamentsEnCours(etat)) {
+    const cle = `${m.id}|${moment}`;
+    if (m.moments?.[moment] && !duJour[cle]) duJour[cle] = maintenant;
+  }
+  return { ...etat, prises: { ...etat.prises, [date]: duJour } };
+}
+
 export const estPris = (etat, date, idMedicament, moment) => Boolean(etat.prises[date]?.[`${idMedicament}|${moment}`]);
 
 // ---------- Alimentation : aide-mémoire à cocher ----------
