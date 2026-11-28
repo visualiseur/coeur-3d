@@ -172,16 +172,16 @@ function vueAujourdhui() {
       ${mention()}`;
   }
 
-  const cartePoids = `
+  // Version 24 : la carte ne sert qu'à noter le poids du jour. Une fois noté, elle disparaît (le bouton « Poids »
+  // du haut l'affiche) et revient le lendemain. Pour corriger une pesée : bouton « Poids », puis l'écran Poids.
+  const cartePoids = pesee ? '' : `
     <section class="carte">
       <div class="carte-tete"><span class="pastille primaire">${ic('balance')}</span><h2>Mon poids</h2><button class="lien" data-action="nav:poids">Courbe</button></div>
-      ${pesee
-        ? `<div class="grand-nombre">${nombre(pesee.kg)}<small>kg</small></div><p class="discret" style="margin-top:6px">Noté aujourd’hui.</p>`
-        : `<form class="saisie-rapide" data-form="poids-rapide">
+      <form class="saisie-rapide" data-form="poids-rapide">
              <div class="champ-unite"><input type="text" name="kg" inputmode="decimal" placeholder="Poids du jour" aria-label="Poids du jour en kilos" autocomplete="off" required><span>kg</span></div>
              ${boutonDicter()}
              <button class="bouton" type="submit">Noter</button>
-           </form>${ui.erreur ? `<p class="erreur" style="margin-top:10px">${ech(ui.erreur)}</p>` : ''}`}
+           </form>${ui.erreur ? `<p class="erreur" style="margin-top:10px">${ech(ui.erreur)}</p>` : ''}
     </section>`;
 
   const blocsMoments = MOMENTS.map((mo) => {
@@ -1481,6 +1481,7 @@ function feuille() {
 // ---------- Assemblage ----------
 
 function rendre() {
+  ui.jourAffiche = aujourdhui();
   const contenu = ui.vue === 'fiche' ? vueFiche() : ui.vue === 'poids' ? vuePoids() : ui.vue === 'medicaments' ? vueMedicaments() : ui.vue === 'alimentation' ? vueAlimentation() : ui.vue === 'liquides' ? vueLiquides() : ui.vue === 'seances' ? vueSeances() : ui.vue === 'soignant' ? vueSoignant() : ui.vue === 'remplir' ? vueRemplir() : ui.vue === 'documents' ? vueDocuments() : vueAujourdhui();
   document.getElementById('app').innerHTML = `
     <header class="barre">
@@ -1852,3 +1853,14 @@ if ('serviceWorker' in navigator && !['localhost', '127.0.0.1'].includes(locatio
 rendre();
 traiterReception().then(() => { if (ui.feuille) rendre(); });
 depot.toutes().then((lues) => { photos = lues; if (lues.size) rendre(); }).catch((e) => console.error('Photos illisibles sur cet appareil', e));
+
+// Version 24 : un nouveau jour remet l'accueil à neuf (poids à noter, bouteille pleine, cases décochées), même si
+// l'appli est restée ouverte toute la nuit. On ne redessine que si la date a changé et qu'aucune feuille n'est ouverte,
+// pour ne jamais effacer une saisie en cours. « Remplir ma fiche » garde de toute façon son brouillon.
+function siNouveauJour() {
+  if (document.hidden || ui.feuille || ui.vue === 'remplir') return;
+  if (ui.jourAffiche && ui.jourAffiche !== aujourdhui()) rendre();
+}
+document.addEventListener('visibilitychange', siNouveauJour);
+window.addEventListener('focus', siNouveauJour);
+setInterval(siNouveauJour, 60000);
