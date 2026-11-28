@@ -45,9 +45,9 @@ function charger() {
 const CLE_COULEURS = 'carnet-coeur-couleurs';
 const PALETTES = [
   { id: 'lagon', nom: 'Lagon', barre: '#0e6b6f' },
-  { id: 'prune', nom: 'Prune et pêche', barre: '#6d2e7c' },
+  { id: 'prune', nom: 'Prune et pêche', barre: '#6a3f74' },
   { id: 'indigo', nom: 'Indigo et lilas', barre: '#4a3bc4' },
-  { id: 'soleil', nom: 'Coucher de soleil', barre: '#cf4526' },
+  { id: 'soleil', nom: 'Coucher de soleil', barre: '#bb5238' },
 ];
 function paletteChoisie() {
   let id = '';

@@ -556,18 +556,18 @@ a.bouton { text-decoration: none; display: inline-flex; align-items: center; jus
 /* « Lagon » est la palette d'origine (les valeurs de :root, en tête de fichier). Les autres ne changent que des couleurs. */
 :root {
   --bandeau-lagon: linear-gradient(140deg, #128087 0%, #0e6b6f 45%, #0a4d52 100%);
-  --bandeau-prune: linear-gradient(140deg, #9a4a9e 0%, #6d2e7c 48%, #c9506f 100%);
+  --bandeau-prune: linear-gradient(140deg, #8a5a8f 0%, #6a3f74 48%, #ab6278 100%);
   --bandeau-indigo: linear-gradient(140deg, #7d6df5 0%, #4a3bc4 50%, #9150dc 100%);
-  --bandeau-soleil: linear-gradient(140deg, #ff9148 0%, #f2516b 52%, #9a4fe0 100%);
+  --bandeau-soleil: linear-gradient(140deg, #cf7f55 0%, #c2626a 52%, #866199 100%);
   --bandeau: var(--bandeau-lagon); --bandeau-ombre: rgba(14, 107, 111, 0.28);
   --neutre: #f1ebe2; --fond-large: #ece5da;
 }
 :root[data-palette="prune"] {
   --fond: #fbf4f0; --trait: #efe2da;
-  --primaire: #6d2e7c; --primaire-fonce: #4a1d57; --primaire-clair: #f1e3f4;
-  --corail: #e2553f; --corail-clair: #fde6df; --ambre: #c2620a; --ambre-clair: #fdebd3;
+  --primaire: #6a3f74; --primaire-fonce: #4b2a54; --primaire-clair: #f0e6f1;
+  --corail: #c9594a; --corail-clair: #f9e7e2; --ambre: #b0621c; --ambre-clair: #fdebd3;
   --vert: #2f7d5b; --vert-clair: #e1f2e8; --bleu: #3b63c9; --bleu-clair: #e4ebfb;
-  --bandeau: var(--bandeau-prune); --bandeau-ombre: rgba(109, 46, 124, 0.30); --neutre: #f3e8e1; --fond-large: #f1e6df;
+  --bandeau: var(--bandeau-prune); --bandeau-ombre: rgba(106, 63, 116, 0.22); --neutre: #f3e8e1; --fond-large: #f1e6df;
 }
 :root[data-palette="indigo"] {
   --fond: #f5f3fc; --trait: #e3dff3; --encre: #1b1838; --encre-douce: #57547a; --encre-pale: #8a87ab;
@@ -576,20 +576,21 @@ a.bouton { text-decoration: none; display: inline-flex; align-items: center; jus
   --vert: #1f8a63; --vert-clair: #dcf3ea; --bleu: #2d7fd3; --bleu-clair: #e0effc;
   --bandeau: var(--bandeau-indigo); --bandeau-ombre: rgba(74, 59, 196, 0.32); --neutre: #ebe8f8; --fond-large: #e9e6f6;
 }
-/* Coucher de soleil (version 26, voulu par Xavier) : boutons rouge-orangé en dégradé ; « Urgence » s'en distingue
+/* Version 27 : Prune et pêche et Coucher de soleil adoucies (mêmes teintes, moins saturées : « ça flashait trop »).
+   Coucher de soleil (version 26, choix de l’utilisateur) : boutons rouge-orangé en dégradé ; « Urgence » s'en distingue
    par un rouge vif plein, écrit en blanc. */
 :root[data-palette="soleil"] {
   --fond: #fff7f1; --trait: #f2e3d6; --encre: #2a1c24; --encre-douce: #6b5660; --encre-pale: #9a8790;
-  --primaire: #cf4526; --primaire-fonce: #8f2c16; --primaire-clair: #fde4da;
-  --corail: #e8113a; --corail-clair: #ffe1e6; --ambre: #b86a00; --ambre-clair: #ffedc7;
+  --primaire: #bb5238; --primaire-fonce: #86351f; --primaire-clair: #f9e6de;
+  --corail: #d42f44; --corail-clair: #fbe4e7; --ambre: #b86a00; --ambre-clair: #ffedc7;
   --vert: #2b8066; --vert-clair: #ddf1ea; --bleu: #3b63c9; --bleu-clair: #e4ebfb;
-  --bandeau: var(--bandeau-soleil); --bandeau-ombre: rgba(242, 81, 107, 0.32); --neutre: #f8eadf; --fond-large: #f6e9de;
+  --bandeau: var(--bandeau-soleil); --bandeau-ombre: rgba(194, 98, 106, 0.22); --neutre: #f8eadf; --fond-large: #f6e9de;
 }
 .bouton.neutre, .periodes, .etiquette.neutre, .pastille.neutre { background: var(--neutre); }
 @media (min-width: 560px) { body { background: var(--fond-large); } }
-:root[data-palette="soleil"] .bouton:not(.secondaire):not(.neutre):not(.danger) { background: linear-gradient(140deg, #ee6a22 0%, #d2382c 100%); }
-:root[data-palette="soleil"] .bouton-urgence { background: #ff1f3d; color: #fff; box-shadow: 0 6px 16px rgba(255, 31, 61, 0.35); }
-:root[data-palette="soleil"] .urgence-numero:not([style]) { background: #ff1f3d; }
+:root[data-palette="soleil"] .bouton:not(.secondaire):not(.neutre):not(.danger) { background: linear-gradient(140deg, #d27a4a 0%, #bb4d3f 100%); }
+:root[data-palette="soleil"] .bouton-urgence { background: #dc2f43; color: #fff; box-shadow: 0 6px 14px rgba(220, 47, 67, 0.25); }
+:root[data-palette="soleil"] .urgence-numero:not([style]) { background: #dc2f43; }
 :root[data-palette] .marque .logo { background: linear-gradient(145deg, #ff8f93, var(--corail)); }
 
 .palettes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
